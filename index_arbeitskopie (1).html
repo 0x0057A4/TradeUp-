@@ -6,10 +6,12 @@
 <meta http-equiv="pragma" content="no-cache">
 <meta http-equiv="expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Trade Up · 7e-Kit N/O</title>
+<title>Trade Up · Arbeitspaket 01</title>
 <!--
   ============================================================================
-  TRADE UP – Phase 7a: Komfort & Bedienung (Startlevel "Garage")
+  TRADE UP – Arbeitspaket 01: Grundfunktionen & Förderband-Bedienung
+  Erweiterungen: kontextbezogene Filter, Smart-Zusammenführer,
+  Objekt-Drag-and-Drop, geschützte Arbeitszugänge und Komponenten-Inventare.
   (Phase 1: Fundament & Bau-Raster · Phase 2: Spieler & Pathfinding ·
    Phase 3: Produkt-Layout-Designer · Phase 4: Erste Produktion & Kuriere ·
    Phase 5: Wirtschaft, Logistik-Erweiterung & Forschung ·
@@ -3083,6 +3085,21 @@
     .lz-chip, .lz-kat, .lz-produkt, .lz-bauteil, .lz-geh-karte, .lz-bp-laden,
     .pin-knopf, .mini-knopf, .lz-symbol-knopf, .hud-frei, .filter-knopf, .pfeil-knopf { transition: none; }
   }
+  /* AP01: kompakte, suchbare Filterausnahmen und tatsächlicher Bauteilbestand. */
+  .band-filter-dropdown { margin-top: 8px; padding: 8px; border: 1px solid var(--hud-linie); border-radius: 10px; background: rgba(255,255,255,0.04); }
+  .band-filter-dropdown summary { cursor: pointer; font-weight: 700; font-size: var(--groesse-klein); color: var(--hud-cyan); }
+  .band-filter-dropdown[open] summary { margin-bottom: 10px; }
+  .band-filter-dropdown select { width: 100%; max-width: 100%; background: var(--lz-fenster); color: var(--hud-text); }
+  .band-filter-dropdown small { display: block; margin-top: 8px; }
+  /* Gespeicherte Bandfilter behalten im dunklen HUD kontrastreiche Zustandsfarben. */
+  .filter-knopf.seiten-chip[data-band-aktion="seiteFilter"][data-zustand="nur"] {
+    background: #244e3e; color: #d8ffe9; border-color: #66c995;
+  }
+  .filter-knopf.seiten-chip[data-band-aktion="seiteFilter"][data-zustand="nein"] {
+    background: #522c35; color: #ffe0e4; border-color: #e67787;
+  }
+  .band-inventar-zeile { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--hud-linie); }
+  .band-inventar-zeile > span { flex: 1 1 100%; }
   </style>
 </head>
 <body>
@@ -3426,7 +3443,7 @@
   <span><kbd data-taste="abreissen">Entf</kbd> Abreißen</span>
   <span><kbd>Strg</kbd>+Klick / Rahmen ziehen: mehrere wählen</span>
   <span><kbd>Strg</kbd>+<kbd>C</kbd> / <kbd>Strg</kbd>+<kbd>V</kbd> kopieren, einfügen</span>
-  <span>Mitarbeiter ziehen: an Station</span>
+  <span>Mitarbeiter ziehen: an Station · Gebäude, Bandteile und verbundene Brücken/Tunnel ziehen: versetzen (ohne Werkzeug; Esc bricht ab)</span>
   <span><kbd data-taste="einstellungen">O</kbd> Optionen</span>
   <span><kbd data-taste="pause">P</kbd><kbd data-taste="tempo1">1</kbd><kbd data-taste="tempo2">2</kbd><kbd data-taste="tempo3">3</kbd> Tempo</span>
   <span><kbd>Leertaste</kbd> zu dir</span>
@@ -3942,7 +3959,7 @@ const PRODUKTION = {
   lieferAlterung:      60,    // nach so vielen Sekunden ohne Lieferung hat ein Zwischenlager bei Kurieren Vorrang
   speicherIntervall:   10,    // alle so viele Sekunden wird der Spielstand im Browser gespeichert
   speicherSchluessel:  "tradeup.spielstand", // Name, unter dem der Browser den Spielstand speichert
-  spielstandVersion:   14,    // Format-Version des Spielstands (7a: 4 …; 7b: 6 …; 7c: 8 Komponenten-Katalog + Gehäuse; 7d: 9 neue Forschung; P1: 10 = 10 Rohstoffe (metall→eisen) + Vollraster-Gehäuse; W1: 11 = Gefahrenzulage je Mitarbeiter; W2: 12 = QA-Status je Blaupause; W2b: 13 = Prüfquote { g, m } statt true/false; W3: 14 = Krisen (M2), KI-Markt & Kopien (M5); ältere werden umgewandelt)
+  spielstandVersion:   15,    // Format-Version des Spielstands (7a: 4 …; 7b: 6 …; 7c: 8 Komponenten-Katalog + Gehäuse; 7d: 9 neue Forschung; P1: 10 = 10 Rohstoffe (metall→eisen) + Vollraster-Gehäuse; W1: 11 = Gefahrenzulage je Mitarbeiter; W2: 12 = QA-Status je Blaupause; W2b: 13 = Prüfquote { g, m } statt true/false; W3: 14 = Krisen (M2), KI-Markt & Kopien (M5); ältere werden umgewandelt)
   kurierTraglast:      5,     // Phase 7b: Grundwert Items pro Kurier-Gang, Ausrüstung und Forschung addieren sich
   // Phase 7b: Lager haben ein Volumen-Limit. So viel Platz braucht ein Item:
   volumenRohstoff:     1,     // Rohstoff
@@ -4621,7 +4638,7 @@ const BAUTYP_FORSCHUNG = {
   kiste: "PROD-001", werkbank: "PROD-004", forschungsstation: "PROD-006", muelltonne: "PROD-007", schrank: "PROD-008",
   metallKiste: "PROD-019", metallSchrank: "PROD-023", industrieSchrank: "PROD-033",
   band: "PROD-016", bruecke: "PROD-016", rampeHoch: "PROD-016", hochband: "PROD-016", rampeRunter: "PROD-016",
-  splitter: "PROD-017", zusammen: "PROD-018", greifarm: "PROD-020", greifGeber: "PROD-020", uebergang: "PROD-021",
+  splitter: "PROD-017", zusammen: "PROD-018", smartZusammen: "PROD-018", greifarm: "PROD-020", greifGeber: "PROD-020", uebergang: "PROD-021",
   smartVerteiler: "PROD-032", ventil: "PROD-048",
 };
 // Phase 7d (6.5): die alte Forschung (k1–k7, a1–a5) → neue Einträge; true = jetzt Standardverhalten (immer an)
@@ -4950,6 +4967,9 @@ const BAND_TEILE = [
   { typ: "zusammen", name: "Zusammenführung", symbol: "⑃", preis: 120, spur: false, begehbar: false, tagesKosten: 2,
     ebeneEin: 0, ebeneAus: 0, imMenue: true,
     beschreibung: "Führt Bänder von links, hinten und rechts reihum auf ein Band nach vorn zusammen." },
+  { typ: "smartZusammen", name: "Smart-Zusammenführung", symbol: "⑃✓", preis: 250, spur: false, begehbar: false, tagesKosten: 3,
+    ebeneEin: 0, ebeneAus: 0, imMenue: true, forschung: "PROD-018",
+    beschreibung: "Führt drei gefilterte Eingänge fair zusammen. Nimmt nur Ware an, wenn das nachgelagerte Ziel Platz hat; mit optionalem Vorrang." },
   { typ: "uebergang", name: "Übergang", symbol: "⇵", preis: 60, spur: true, begehbar: true, laufKosten: 1,
     ebeneEin: 0, ebeneAus: 0, imMenue: true,
     beschreibung: "Band mit kleiner Treppe darüber: Personen queren es ohne Umweg." },
@@ -5002,11 +5022,11 @@ const BAENDER = {
   ablaufStauSek:    30,    // Zwischenlager mit Ablauf: Kuriere holen Export-Ware erst, wenn das Band so lange voll ist
   minBrueckenLaenge: 3,    // eine Brücke hat mindestens Auffahrt + 1 Hochband + Abfahrt
   laufTempoAufBand: 0.4,   // Personen, die über ein Band steigen, laufen nur so schnell (40 %)
-  verteilerPuffer:  30,    // Phase 7b Nachtrag: so viele Items puffert jeder Verteiler (Splitter, Smart-Verteiler, Ventil)
+  verteilerPuffer:  25,    // Tatsächlicher Gesamtbestand je Förderbandkomponente; Altbestände bleiben erhalten.
   // Phase 7d: Bauforschung
   durchsatzBegrenzt: true, // Fließband Mk.1–Mk.4: ein Segment nimmt höchstens "proMinute" Items pro Minute auf (BAND_TEMPO)
   untergrundReichweite: 3, // Untergrund-Fließband: so viele Kacheln dürfen zwischen Eingang und Ausgang liegen
-  omniPuffer:       30,    // so viele Items puffert ein Omni-Merger
+  omniPuffer:       25,    // Neue Annahme bis 25 Items; bereits gespeicherte Überkapazität wird nicht gekürzt.
   ioGateSek:        3,     // PROD-068: so lange darf ein Item vor einem Lager warten, dann wird es verkauft
   ioGateFaktor:     0.8,   // ... zu so viel vom Direktverkaufspreis (Rohstoffe: ZONEN.rohstoffVerkauf × Einkaufspreis)
 };
@@ -5948,6 +5968,10 @@ zeichenflaeche.addEventListener("pointerdown", (e) => {
       zeichenflaeche.setPointerCapture(e.pointerId);
       return;
     }
+    if (objektZiehenStart(e)) {
+      zeichenflaeche.setPointerCapture(e.pointerId);
+      return;
+    }
     // Phase 6: Mit dem Band-, Brücken- oder Abriss-Werkzeug wird gezogen (Strecke legen)
     const k = ziehWerkzeugAktiv() ? kachelUnterMaus(e.clientX, e.clientY) : null;
     if (k) {
@@ -5971,6 +5995,8 @@ zeichenflaeche.addEventListener("pointerdown", (e) => {
 zeichenflaeche.addEventListener("pointermove", (e) => {
   if (eingaben3dGesperrt) return;
   maus.letzteX = e.clientX; maus.letzteY = e.clientY;
+  if (!(e.buttons & 1) && (maus.linksUnten || maus.zieht || maus.ziehtPerson || maus.rahmen)) breche3dGestenAb();
+  if (objektZiehenBewegt(e)) return;
   if (maus.verschiebt && maus.ankerPunkt) {
     // Den Bodenpunkt unter der Maus festhalten: Kamera so verschieben, dass er mitwandert.
     const jetzt = punktUnterMaus(e.clientX, e.clientY);
@@ -5983,7 +6009,7 @@ zeichenflaeche.addEventListener("pointermove", (e) => {
   setzeHover(kachelUnterMaus(e.clientX, e.clientY));
   if (maus.zieht && hoverKachel) ziehen("bewegt", hoverKachel, e.shiftKey);   // Phase 6
   // Phase 7a (Nachtrag 3): linke Taste ohne Werkzeug gezogen → Auswahl-Rahmen
-  if (maus.linksUnten && maus.rahmenMoeglich && !maus.rahmen &&
+  if ((e.buttons & 1) && maus.linksUnten && maus.rahmenMoeglich && !maus.rahmen &&
       Math.hypot(e.clientX - maus.startX, e.clientY - maus.startY) > GRAFIK.klickToleranz) {
     maus.rahmen = true;
     zeichenflaeche.setPointerCapture(e.pointerId);
@@ -5997,6 +6023,8 @@ zeichenflaeche.addEventListener("pointermove", (e) => {
 
 zeichenflaeche.addEventListener("pointerup", (e) => {
   if (eingaben3dGesperrt) return;
+  if (document.elementFromPoint(e.clientX, e.clientY) !== zeichenflaeche) { breche3dGestenAb(); return; }
+  if (e.button === 0 && objektZiehenEnde(e)) { maus.linksUnten = false; return; }
   if (e.button === 0 && maus.ziehtPerson) {          // Phase 7a: Mitarbeiter losgelassen
     maus.ziehtPerson = false;
     if (personZiehenEnde(e.clientX, e.clientY)) { maus.linksUnten = false; return; }
@@ -6067,6 +6095,7 @@ zeichenflaeche.addEventListener("wheel", (e) => {
 const gedrueckteTasten = new Set();
 window.addEventListener("keydown", (e) => {
   if (eingaben3dGesperrt) return;    // Layout-Designer offen: 3D-Steuerung ruht
+  if (e.target instanceof Element && (e.target.isContentEditable || e.target.closest("input, select, textarea, button, a, [role='button']"))) return;
   if (e.key === "Escape") { setzeAuswahl(null); return; }
   if (e.key === " ") {               // Leertaste: Kamera auf die Figur zentrieren
     e.preventDefault();              // verhindert, dass der Browser die Seite scrollt
@@ -6083,6 +6112,7 @@ window.addEventListener("blur", () => gedrueckteTasten.clear()); // Fenster verl
 // zurückgesetzt, damit nach dem Schließen nichts "klemmt". Die Spielschleife läuft weiter.
 let eingaben3dGesperrt = false;
 function sperre3dEingaben(an) {
+  if (an) objektZiehenAbbruch();
   eingaben3dGesperrt = an;
   gedrueckteTasten.clear();
   maus.linksUnten = false;
@@ -6386,10 +6416,10 @@ spielEreignisse.addEventListener("hinweis", (e) => zeigeMeldung(e.detail.text));
 // Schutz vor "Durchklicken": Mausaktionen auf der Bedienoberfläche erreichen das Raster nicht.
 for (const element of [document.getElementById("hud-info"), document.getElementById("hud-hilfe")]) {
   for (const art of ["pointerdown", "pointerup", "click", "wheel", "contextmenu"]) {
-    element.addEventListener(art, (e) => e.stopPropagation());
+    element.addEventListener(art, (e) => { if (art === "pointerdown") { if (typeof breche3dGestenAb === "function") breche3dGestenAb(); sperre3dEingaben(!!oberstesModal()); } e.stopPropagation(); });
   }
   // Fährt die Maus auf die Bedienoberfläche, gilt sie als "nicht über dem Raster".
-  element.addEventListener("pointerenter", () => setzeHover(null));
+  element.addEventListener("pointerenter", (e) => { if (!e.buttons) { if (typeof breche3dGestenAb === "function") breche3dGestenAb(); sperre3dEingaben(!!oberstesModal()); } setzeHover(null); });
 }
 
 /* ============================================================================
@@ -8028,14 +8058,44 @@ document.getElementById("lz-speichern").addEventListener("click", () => {
   meldeEreignis("blaupauseGespeichert", { blaupause });
 });
 
+/* --- Einheitliche Modalsteuerung: Fokus und 3D-Sperre folgen dem sichtbaren Fenster. --- */
+function oberstesModal() {
+  const bestaetigung = document.getElementById("dialog-overlay");
+  if (!bestaetigung.hidden) return bestaetigung;
+  return [...document.querySelectorAll(".modal-schleier, #layout-overlay")].reverse().find((e) => !e.hidden) || null;
+}
+function synchronisiereModalFokus() {
+  const modal = oberstesModal();
+  for (const element of document.body.children) {
+    if (element.matches("script, style")) continue;
+    element.inert = !!modal && element !== modal;
+  }
+}
+window.addEventListener("keydown", (e) => {
+  const modal = oberstesModal();
+  if (!modal || e.key !== "Tab") return;
+  const knoepfe = [...modal.querySelectorAll('button, input, select, textarea, a[href], [tabindex="0"], summary')]
+    .filter((el) => !el.disabled && !el.closest("[hidden], [inert]") && el.getClientRects().length);
+  const erster = knoepfe[0], letzter = knoepfe[knoepfe.length - 1];
+  if (!erster || !modal.contains(document.activeElement) || (e.shiftKey && document.activeElement === erster) ||
+      (!e.shiftKey && document.activeElement === letzter) || document.activeElement.matches('[role="dialog"], [role="alertdialog"]')) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    (e.shiftKey ? letzter : erster)?.focus({ preventScroll: true });
+  }
+}, true);
+document.addEventListener("focusin", (e) => {
+  const modal = oberstesModal();
+  if (modal && !modal.contains(e.target)) modal.querySelector('[role="dialog"], [role="alertdialog"]')?.focus({ preventScroll: true });
+});
 /* --- Öffnen und Schließen --- */
 function oeffneDesigner() {
-  if (designer.offen) return;
+  if (designer.offen || dialogOffen || insolvenzOffen) return;
+  schliesseAndereFenster();
   designer.offen = true;
   if (!designer.name) designer.name = naechsterEntwurfsName();
   lz.name.value = designer.name;
-  sperre3dEingaben(true);
   lz.overlay.hidden = false;
+  aktualisiereSperre();
   zeichnePalette();              // Phase 7c (UI): Fortschritt und Freischaltbares auffrischen
   zeichneGehaeuseAuswahl();
   zeichneBlaupausen();
@@ -8047,7 +8107,7 @@ function schliesseDesigner() {
   if (ui.ziehen) ziehenAbbrechen();
   designer.offen = false;
   lz.overlay.hidden = true;
-  sperre3dEingaben(false);
+  aktualisiereSperre();
   lz.hudKnopf.focus({ preventScroll: true });
 }
 lz.hudKnopf.addEventListener("click", oeffneDesigner);
@@ -8066,7 +8126,7 @@ window.addEventListener("resize", () => {
    Läuft in der "Capture"-Phase, also VOR der 3D-Steuerung. Solange der Designer
    offen ist, ignoriert die 3D-Steuerung alle Tasten (siehe sperre3dEingaben). */
 window.addEventListener("keydown", (e) => {
-  const imEingabefeld = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+  const imEingabefeld = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement || e.target.isContentEditable;
   const taste = e.key.toLowerCase();
 
   if (!designer.offen) {
@@ -8093,7 +8153,7 @@ window.addEventListener("keydown", (e) => {
   if (taste === "escape") {
     if (ui.ziehen && ui.ziehen.gestartet) ziehenAbbrechen();
     else schliesseDesigner();
-  } else if (taste === "l") {
+  } else if (taste === tasteFuer("designer")) {
     schliesseDesigner();
   } else if (taste === "r") {
     dreheAuswahl();
@@ -8439,9 +8499,20 @@ function hlEinlagern(item, n, res = null) {
 function istLagerTyp(t) { return !!t && t.kategorie !== "station" && t.kategorie !== "maschine"; }   // Phase 7d: Maschinen sind keine Lager
 // Liegt auf dem Zugang dieses Lagers ein Bandteil? Dann kommen Kuriere nicht heran.
 function zugangGesperrt(g) {
-  if (!g || !istLagerTyp(typVon(g))) return false;
+  if (!g) return false;
   const k = holeKachel(g.zugang.x, g.zugang.z);
-  return !!(k && k.band);
+  return !k || !k.begehbar || !!(k.objekt || k.band || k.hochband);
+}
+// Vorhandene Zugänge bleiben reserviert; beim Versetzen nur den eigenen ausnehmen.
+function arbeitsZugangBei(x, z, ignoriereId = null) {
+  return [...spiel.gebaeude.values()].find((g) => g.id !== ignoriereId && g.zugang.x === x && g.zugang.z === z) || null;
+}
+function pruefeAlteZugaenge() {
+  const blockiert = gebaeudeListe(zugangGesperrt);
+  for (const g of spiel.gebaeude.values()) g.zugangWarnung = zugangGesperrt(g);
+  if (blockiert.length) zeigeMeldung(
+    "Hinweis zum geladenen Spielstand: " + blockiert.length + " Arbeitszugänge sind blockiert. Bitte Gebäude oder Bandteile versetzen. Alle Objekte und Waren bleiben erhalten.", true);
+  return blockiert.map((g) => g.id);
 }
 // Nimmt dieses Hauptlager das Item an? (⇣ Annahme an und Max – mit "res" inklusive Unterwegs – nicht erreicht)
 function hlNimmtAn(g, item, res = null) {
@@ -8556,7 +8627,7 @@ function bleibtAllesErreichbar(geo, eigenes = null) {
   for (const c of geo.zellen) frei[c.x * T + c.z] = 0;
   // Phase 7b Nachtrag: Ein Lager darf mit dem Zugang auf einem Band stehen – dann zählt sein Zugang nicht
   const zk = holeKachel(geo.zugang.x, geo.zugang.z);
-  const zugangZaehlt = !(geo.typ && istLagerTyp(gebaeudeTypNach.get(geo.typ)) && zk && zk.band);
+  const zugangZaehlt = true; // Neu platzierte Arbeitsflächen müssen frei bleiben.
   const ziele = gebaeudeListe((g) => g !== eigenes && !zugangGesperrt(g)).map((g) => g.zugang);
   for (const p of allePersonen()) {
     const k = personKachel(p);
@@ -8592,15 +8663,15 @@ function passtGebaeude(typ, x, z, drehung, ignoriereId = null) {
   for (const c of geo.zellen) {
     const k = holeKachel(c.x, c.z);
     if (!k) gruende.push("Das Gebäude ragt aus der Halle.");
+    else if (arbeitsZugangBei(c.x, c.z, ignoriereId)) gruende.push("Hier ist ein Arbeitszugang (Pfeil) reserviert.");
     else if (k.band || k.hochband) gruende.push(k.hochband ? "Unter einer Brücke ist kein Platz für Gebäude." : "Hier liegt ein Fließband.");
     else if ((k.belegt || !k.begehbar) && !istEigen(c)) gruende.push("Der Platz ist schon belegt.");
     else if (allePersonen().some((p) => personBeruehrtKachel(p, c))) gruende.push("Hier steht gerade jemand.");
   }
   // Phase 7b Nachtrag: Lager (keine Station) dürfen mit dem Zugang auf einem Bandteil stehen – Kuriere kommen dann nicht heran
   const zugangKachel = holeKachel(geo.zugang.x, geo.zugang.z);
-  if (istLagerTyp(t) && zugangKachel && zugangKachel.band && !zugangKachel.objekt) { /* erlaubt */ }
-  else if (!istBegehbar(geo.zugang.x, geo.zugang.z) && !istEigen(geo.zugang)) gruende.push("Der Zugang (Pfeil) ist versperrt.");
-  else if (zugangKachel?.band) gruende.push("Der Zugang (Pfeil) liegt auf einem Fließband.");   // Phase 6
+  if (!zugangKachel || ((!zugangKachel.begehbar || zugangKachel.objekt) && !istEigen(geo.zugang))) gruende.push("Der Arbeitszugang (Pfeil) ist versperrt.");
+  if (zugangKachel?.band || zugangKachel?.hochband) gruende.push("Der Arbeitszugang (Pfeil) muss auch oberhalb frei bleiben.");
   if (t.maxAnzahl && anzahlTyp(typ) - (eigenes ? 1 : 0) >= t.maxAnzahl) gruende.push(`Es gibt schon ein ${t.name}.`);
   if (t.wand && !stehtAnWand(geo)) gruende.push(`${t.name} muss mit der Rückseite an einer Hallenwand stehen (dort ist das Rolltor).`);   // Phase 7b
   if (!t.freigeschaltet) gruende.push(`${t.name} ist noch nicht freigeschaltet.`);
@@ -10509,7 +10580,7 @@ function zaehleHalle() {
   let items = 0;
   for (const g of spiel.gebaeude.values()) items += summe(g.bestand) + summe(g.eingang) + summe(g.autoRezept ? g.autoRezept.eingaben : {});
   for (const p of mitarbeiter) items += summe(p.traegt);
-  for (const t of spiel.baender.values()) items += (t.items ? t.items.length : 0) + pufferVon(t).length + (t.haelt ? 1 : 0);   // Phase 6 (7b Nachtrag: Puffer)
+  for (const t of spiel.baender.values()) items += bandInventar(t).anzahl;
   return { gebaeude: spiel.gebaeude.size, items, baender: spiel.baender.size };
 }
 
@@ -10528,12 +10599,12 @@ function halleBereinigen() {
       exportNach: g.exportNach.map((id) => nummer.get(id)).filter((i) => i !== undefined),
       arbeiter: g.arbeiterId, modus: g.modus, regeln: JSON.parse(JSON.stringify(g.regeln)),
     })),
-    baender: [...spiel.baender.values()].map((t) => ({ ...bandteilDaten(t), items: [], puffer: istVerteiler(t) ? [] : undefined, haelt: null })),   // Phase 6
+    baender: [...spiel.baender.values()].map((t) => ({ ...bandteilDaten(t), items: [], reserve: [], puffer: hatPuffer(t) ? [] : undefined, pufferFlags: hatPuffer(t) ? [] : undefined, haelt: null, haeltFlags: null })),   // Aufbau-Schnappschuss enthält keine bereits ins Depot gebuchte Ware.
   };
   let items = 0;
   // Phase 6: Bänder und Greifarme zuerst ins Depot (Items darauf ebenfalls)
   for (const t of [...spiel.baender.values()]) {
-    items += (t.items ? t.items.length : 0) + pufferVon(t).length + (t.haelt ? 1 : 0);   // 7b Nachtrag: Puffer
+    items += bandInventar(t).anzahl;
     entferneBandteil(t.id, { insDepot: true });
   }
   // 1. Alle brechen ab; was sie tragen (auch Material in Arbeit) geht ins Depot
@@ -10658,6 +10729,8 @@ function spielstandDaten() {
       fp: spiel.fp, erforscht: spiel.erforscht, entdeckteKlassen: spiel.entdeckteKlassen,
       autoKauf: spiel.autoKauf, autoVerkauf: spiel.autoVerkauf,
       produktTeile: spiel.produktTeile, produktUeberhitzt: spiel.produktUeberhitzt,
+      // AP01: Wärme bleibt auch nach dem Löschen der zugehörigen Blaupause erhalten.
+      produktHitze: spiel.produktHitze, produktMaxHitze: spiel.produktMaxHitze,
       produktGehaeuse: spiel.produktGehaeuse,      // Phase 7c
       produktQa: spiel.produktQa,                  // W2 (M7): QA-Prüfung je Blaupause
       krisen: spiel.krisen,                        // W3 (M2): offene + anstehende Krisen
@@ -10692,7 +10765,7 @@ function leseSpielstand() {
     // W1: version 10 wird gelesen (Mitarbeiter ohne Gefahrenzulage starten mit 0)
     // W2: version 11 wird gelesen (Blaupausen starten ohne QA-Prüfung)
     // W2b: version 12 wird gelesen (produktQa true/false → Prüfquote { g, m })
-    return daten && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, PRODUKTION.spielstandVersion].includes(daten.version) && Array.isArray(daten.gebaeude) ? daten : null;
+    return daten && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, PRODUKTION.spielstandVersion].includes(daten.version) && Array.isArray(daten.gebaeude) ? daten : null;
   } catch (fehler) {
     spielstandSpeicherbar = false;
     return null;
@@ -10776,6 +10849,7 @@ function wendeSpielstandAn(d) {
       for (const it of e.items || []) bucheItems(spiel.depot.items, { [it.item]: 1 });
       for (const item of e.puffer || []) bucheItems(spiel.depot.items, { [item]: 1 });   // Phase 7b Nachtrag
       if (e.haelt) bucheItems(spiel.depot.items, { [e.haelt]: 1 });
+      for (const ware of e.reserve || []) bucheItems(spiel.depot.items, { [ware.item]: 1 });
       continue;
     }
     setzeBandteil(e.typ, e.x, e.z, e.richtung, e);
@@ -10859,6 +10933,7 @@ function starteSpiel() {
   if (level.tiefe !== level.basisTiefe) zoomeAufGarage();   // Phase 6: ausgebaute Halle ganz zeigen
   spielstandAktiv = true;
   meldeStruktur();
+  if (gespeichert) pruefeAlteZugaenge();
   setInterval(speichereSpielstand, PRODUKTION.speicherIntervall * 1000);
   // Beim Schließen oder Wegklicken der Seite noch einmal speichern
   window.addEventListener("pagehide", speichereSpielstand);
@@ -11641,7 +11716,11 @@ function holeExportAb(g) {
     let m = rest;
     for (const item of passende) {
       const k = Math.min(m, Math.max(0, verfuegbar(g, item, res)));
-      if (k > 0) { aendereBestand(g, item, -k); m -= k; rueckrufWare.push([item, k]); }   // W2 (M7)
+      if (k > 0) {
+        aendereBestand(g, item, -k); m -= k; rueckrufWare.push([item, k]);
+        // AP01: Auch der reguläre Abholwagen berücksichtigt kopierte Auftragsware.
+        if (item.startsWith("p:") && spiel.produktKopiert[item.slice(2)]) a.kopierBonus = true;
+      }
       if (m <= 0) break;
     }
     a.geliefert = a.menge;
@@ -12806,6 +12885,16 @@ function ladeWirtschaft(w) {
   spiel.autoVerkauf = w.autoVerkauf || {};
   spiel.produktTeile = { ...(w.produktTeile || {}), ...spiel.produktTeile };
   spiel.produktUeberhitzt = { ...(w.produktUeberhitzt || {}), ...spiel.produktUeberhitzt };
+  // AP01: Gespeicherte Wärme ergänzen; vorhandene Blaupausen liefern weiterhin ihre aktuellen Werte.
+  const waermeMap = (daten) => Object.fromEntries(Object.entries(daten && typeof daten === "object" ? daten : {})
+    .filter(([, wert]) => typeof wert === "number" && Number.isFinite(wert) && wert >= 0));
+  spiel.produktHitze = { ...waermeMap(w.produktHitze), ...spiel.produktHitze };
+  spiel.produktMaxHitze = { ...waermeMap(w.produktMaxHitze), ...spiel.produktMaxHitze };
+  const waermeFehlt = Object.keys(spiel.produktTeile).filter((id) =>
+    !Object.hasOwn(spiel.produktHitze, id) || !Object.hasOwn(spiel.produktMaxHitze, id));
+  if (waermeFehlt.length) setTimeout(() => meldeEreignis("hinweis", {
+    text: `Bei ${waermeFehlt.length} Produkt(en) fehlen Wärmedaten im älteren Spielstand und die Blaupause ist nicht mehr vorhanden. Die früheren Werte können nicht wiederhergestellt werden.`,
+  }), 900);
   spiel.produktQa = { ...(w.produktQa || {}), ...spiel.produktQa };                   // W2 (M7)
   for (const [pid, q] of Object.entries(spiel.produktQa)) {                            // W2b: alte boolesche Werte wandeln
     if (q === true) spiel.produktQa[pid] = { g: 1, m: 1 };
@@ -13028,11 +13117,11 @@ function nimmtVonSeite(ziel, richtung, ebene) {
   const typ = bandTyp(ziel);
   if (ziel.typ === "omniMerger") return typ.ebeneEin === ebene;   // Phase 7d: nimmt von allen vier Seiten
   if (ziel.typ === "untergrundAus") return false;                // Phase 7d: nur vom Untergrund-Eingang (untergrundZiel)
-  if (!typ.spur && !istVerteiler(ziel) && ziel.typ !== "zusammen") return false;   // Greifarm
+  if (!typ.spur && !istVerteiler(ziel) && ziel.typ !== "zusammen" && ziel.typ !== "smartZusammen") return false;   // Greifarm
   if (typ.ebeneEin !== ebene) return false;
   const seite = seiteVonFahrt(ziel, richtung);
   if (seite === "vorn") return false;                       // frontal gegeneinander: nein
-  if (ziel.typ === "band" || ziel.typ === "zusammen") return true;
+  if (ziel.typ === "band" || ziel.typ === "zusammen" || ziel.typ === "smartZusammen") return true;
   return seite === "hinten";
 }
 // Wohin gibt ein Teil (in eine Richtung) ab? { art: "band", teil } | { art: "gebaeude", g } | null
@@ -13088,7 +13177,7 @@ function baueBandTopologie() {
   for (const t of teile) {
     t.ziel = null; t.vorgaenger = []; t.kette = null; t.kurve = null; t.segment = null; t.ablaufVon = null;
     t.ausgaenge = null; t.stau = t.stau || 0;
-    if (t.items === undefined && (istSpur(t) || istVerteiler(t) || t.typ === "zusammen")) t.items = [];
+    if (t.items === undefined && (istSpur(t) || istVerteiler(t) || t.typ === "zusammen" || t.typ === "smartZusammen")) t.items = [];
     if (hatPuffer(t)) pufferVon(t);                // Phase 7b Nachtrag: Puffer (t.puffer) immer vorhanden (7d: auch Omni-Merger)
   }
   // 1. Ziele und Vorgänger
@@ -13243,7 +13332,7 @@ function drosselText(z) {
 }
 // Geschwindigkeit eines Teils in Kacheln pro Sekunde
 function bandTempo(t) {
-  if (istVerteiler(t) || t.typ === "zusammen") return BAENDER.knotenTempo;
+  if (istVerteiler(t) || t.typ === "zusammen" || t.typ === "smartZusammen") return BAENDER.knotenTempo;
   return tempoStufe(t.tempo).tempo * overseerFaktor(t) * bandDrosselFaktor(t) * uebertaktFaktor(t) * teststreckenFaktor(t);   // Phase 7d: HR-009 · W1 (M3) · W2b (M8) · W4: HR-017
 }
 // W4 (M7): HR-017 „Erweiterte QA-Protokolle“ – Segmente mit QA-Teststrecke laufen 15 % schneller
@@ -13395,13 +13484,125 @@ function lagerNimmtAuf(items) {
 
 /* --- Transport --- */
 
+// Bestände werden aus den tatsächlichen Behältern gezählt, nicht aus einer Anzeigezahl.
+// Neben sichtbarer Spur/Hand puffert eine tatsächliche FIFO-Reserve bis zum Gesamtlimit.
+// Ein alter Puffer mit 30 Stück wird vollständig geladen und darf zuerst abfließen.
+function bandInventar(t) {
+  const bestand = {};
+  const dazu = (item) => { if (typeof item === "string" && item) bestand[item] = (bestand[item] || 0) + 1; };
+  if (t) {
+    for (const it of t.items || []) dazu(it.item);
+    for (const item of pufferVon(t)) dazu(item);
+    if (t.haelt) dazu(t.haelt);
+    for (const ware of t.reserve || []) dazu(ware.item);
+  }
+  return { bestand, anzahl: Object.values(bestand).reduce((a, n) => a + n, 0), kapazitaet: 25 };
+}
+function loescheBandInventar(id, item, menge = 1) {
+  const t = spiel.baender.get(id);
+  if (!t || typeof item !== "string" || !Number.isInteger(menge) || menge < 1) return { ok: false, menge: 0, grund: "Ungültige Ware oder Menge." };
+  let rest = Math.min(menge, bandInventar(t).bestand[item] || 0);
+  const entfernt = rest;
+  if (!rest) return { ok: false, menge: 0, grund: "Diese Ware liegt hier nicht mehr." };
+  for (let i = (t.items || []).length - 1; i >= 0 && rest; i--) if (t.items[i].item === item) { t.items.splice(i, 1); rest--; }
+  const puffer = pufferVon(t);
+  for (let i = puffer.length - 1; i >= 0 && rest; i--) if (puffer[i] === item) {
+    puffer.splice(i, 1); if (t.pufferFlags) t.pufferFlags.splice(i, 1); rest--;
+  }
+  if (rest && t.haelt === item) { t.haelt = null; t.haeltFlags = null; t.timer = 0; t.wartet = 0; rest--; }
+  for (let i = (t.reserve || []).length - 1; i >= 0 && rest; i--) if (t.reserve[i].item === item) { t.reserve.splice(i, 1); rest--; }
+  spiel.statistik.ausschuss = (spiel.statistik.ausschuss || 0) + entfernt;
+  spiel.vernichtet = (spiel.vernichtet || 0) + entfernt;
+  spiel.version++;
+  meldeStruktur();
+  return { ok: true, menge: entfernt };
+}
+// Filter zeigen nur bekannte Quellen entlang der vorgeschalteten Verbindungen.
+// Jedes neue Paar (Bandteil, Ware) wird einmal weitergegeben, auch in Ringen.
+// Der gerade bearbeitete Filter bleibt außen vor, damit blockierte Ware auswählbar ist.
+function bandQuellItems(t, seite = null) {
+  if (!t) return [];
+  if (bandTopologieAlt) baueBandTopologie();
+  const teile = [...spiel.baender.values()];
+  const kandidaten = new Map(teile.map((b) => [b, new Set(Object.keys(bandInventar(b).bestand))]));
+  const quelleItems = (g, arm = false) => {
+    if (!g) return [];
+    const ids = arm ? armKandidaten(g) : Object.keys(g.bestand || {}).filter((i) => (g.bestand[i] || 0) > 0 && verfuegbar(g, i, reservierungen()) > 0);
+    const r = istStation(g) && rezeptVon(g);
+    if (r && r.ausgabe) ids.push(r.ausgabe);
+    return [...new Set(ids)];
+  };
+  const kanten = new Map(teile.map((b) => [b, [...(b.vorgaenger || [])]]));
+  // Greifarme haben keine regulären Topologiekanten; beide Richtungen einmal ergänzen.
+  for (const arm of teile.filter(istGreifarm)) {
+    const z = armZiel(arm), q = armQuelle(arm);
+    if (z && z.art === "band" && kanten.has(z.teil)) kanten.get(z.teil).push({ teil: arm, richtung: z.teil.richtung });
+    if (q && q.art === "band") kanten.get(arm).push({ teil: q.teil, richtung: q.teil.richtung });
+  }
+  const nachfolger = new Map(teile.map((b) => [b, []]));
+  for (const [b, liste] of kanten) for (const v of liste) if (nachfolger.has(v.teil)) nachfolger.get(v.teil).push({ ziel: b, eingang: v });
+  const filterQuelle = (b, ids) => ids.filter((i) => !istGreifarm(b) || !b.armFilter || b.armFilter === i)
+    .filter((i) => !(b.ablaufFilter || []).length || b.ablaufFilter.includes(i));
+  for (const b of teile) {
+    let ids = quelleItems(b.ablaufVon && spiel.gebaeude.get(b.ablaufVon));
+    if (istGreifarm(b)) { const q = armQuelle(b); if (q && q.art === "gebaeude" && b.typ === "greifarm") ids.push(...quelleItems(q.g, true)); }
+    for (const i of filterQuelle(b, ids)) kandidaten.get(b).add(i);
+  }
+  const routet = (v, b, item) => {
+    if (istVerteiler(v.teil)) {
+      const a = (v.teil.ausgaenge || []).find((a) => a.ziel.art === "band" && a.ziel.teil === b && a.richtung === v.richtung);
+      if (!a || !splitterFilterPasst(v.teil, a.seite, item)) return false;
+    }
+    if ((b.typ === "zusammen" || b.typ === "smartZusammen" || b.typ === "omniMerger") && !seiteLaesstDurch(b, seiteVonFahrt(b, v.richtung), item)) return false;
+    return filterQuelle(v.teil, [item]).length > 0;
+  };
+  const warteschlange = [];
+  for (const [b, ids] of kandidaten) for (const item of ids) warteschlange.push({ b, item });
+  for (let index = 0; index < warteschlange.length; index++) {
+    const { b: quelle, item } = warteschlange[index];
+    for (const kante of nachfolger.get(quelle) || []) {
+      const b = kante.ziel, v = kante.eingang;
+      if (!routet(v, b, item) || (istGreifarm(b) && b.armFilter && b.armFilter !== item)) continue;
+      if (!kandidaten.get(b).has(item)) { kandidaten.get(b).add(item); warteschlange.push({ b, item }); }
+    }
+  }
+  const ergebnis = new Set();
+  if (seite && (t.typ === "zusammen" || t.typ === "smartZusammen" || t.typ === "omniMerger")) {
+    for (const v of kanten.get(t) || []) if (seiteVonFahrt(t, v.richtung) === seite) {
+      for (const i of kandidaten.get(v.teil) || []) {
+        if (istVerteiler(v.teil)) { const a = (v.teil.ausgaenge || []).find((a) => a.ziel.art === "band" && a.ziel.teil === t && a.richtung === v.richtung); if (!a || !splitterFilterPasst(v.teil, a.seite, i)) continue; }
+        if (filterQuelle(v.teil, [i]).length) ergebnis.add(i);
+      }
+    }
+  } else {
+    // Für den eigenen Ablauffilter werden die unbeschränkten Lagerquellen gezeigt.
+    for (const i of kandidaten.get(t) || []) ergebnis.add(i);
+    for (const i of quelleItems(t.ablaufVon && spiel.gebaeude.get(t.ablaufVon))) ergebnis.add(i);
+    if (istGreifarm(t)) { const q = armQuelle(t); if (q && q.art === "gebaeude") for (const i of quelleItems(q.g, true)) ergebnis.add(i); }
+  }
+  return [...ergebnis].sort((a, b) => itemInfo(a).name.localeCompare(itemInfo(b).name, "de"));
+}
+// Prüfkennzeichen begleiten einzelne Waren durch Puffer, Arme und Spielstände.
+function warenFlags(ware) { return ware ? { ...(ware.geprueft !== undefined ? { geprueft: !!ware.geprueft } : {}), ...(ware.defekt !== undefined ? { defekt: !!ware.defekt } : {}) } : {}; }
+function pufferWare(t, index) { return { item: pufferVon(t)[index], ...(t.pufferFlags && t.pufferFlags[index] || {}) }; }
+
 // Ist am Anfang (bzw. an der Stelle "pos") eines Spur-Teils Platz für ein neues Item?
-function hatPlatz(t, pos = 0) {
-  return t.items.every((it) => Math.abs(it.pos - pos) >= BAENDER.mindestAbstand - 1e-9);
+function hatPhysischPlatz(t, pos = 0) { return (t.items || []).every((it) => Math.abs(it.pos - pos) >= BAENDER.mindestAbstand - 1e-9); }
+function hatPlatz(t, pos = 0) { return bandInventar(t).anzahl < 25 && hatPhysischPlatz(t, pos); }
+// Die Reserven enthalten vollständige Waren, keine nochmaligen Bestandsbuchungen.
+// Der Segmenttakt wurde beim Annehmen bereits verbraucht, hier gilt nur der Abstand.
+function entladeBandReserve(t) {
+  if (!istSpur(t)) return;
+  while ((t.reserve || []).length) {
+    const ware = t.reserve[0], pos = ware.pos === 0.5 ? 0.5 : 0;
+    if (!hatPhysischPlatz(t, pos)) break;
+    legeAufBand(t, ware.item, pos, ware.von ?? t.richtung, ware);
+    t.reserve.shift();
+  }
 }
 // Legt ein Item auf ein Teil (die Liste bleibt nach Position sortiert, vorderstes zuerst)
-function legeAufBand(t, item, pos, von) {
-  const it = { item, pos, von };
+function legeAufBand(t, item, pos, von, ware = null) {
+  const it = { item, pos, von, ...warenFlags(ware) };
   const i = t.items.findIndex((x) => x.pos < pos);
   if (i < 0) t.items.push(it); else t.items.splice(i, 0, it);
 }
@@ -13437,7 +13638,12 @@ function seiteLaesstDurch(t, seite, item) {
 function wartetVor(v, z = null) {
   if (hatPuffer(v.teil)) {                       // Phase 7b Nachtrag: ein Verteiler wartet mit seinem Puffer (7d: auch Omni-Merger)
     const erstes = pufferVon(v.teil)[0];
-    return !!erstes && (!z || seiteLaesstDurch(z, seiteVonFahrt(z, v.richtung), erstes));
+    if (!erstes || (z && !seiteLaesstDurch(z, seiteVonFahrt(z, v.richtung), erstes))) return false;
+    if (z && istVerteiler(v.teil)) {
+      const a = (v.teil.ausgaenge || []).find((a) => a.richtung === v.richtung && a.ziel.art === "band" && a.ziel.teil === z);
+      if (!a || !splitterFilterPasst(v.teil, a.seite, erstes)) return false;
+    }
+    return true;
   }
   const vorn = v.teil.items && v.teil.items[0];
   if (!vorn || vorn.pos < 1 - 1e-6) return false;
@@ -13446,23 +13652,81 @@ function wartetVor(v, z = null) {
 // Zusammenführung: reihum von jedem Eingang, an dem etwas wartet (oder der Vorrang-Eingang zuerst)
 function zusammenLaesstDurch(z, richtung) {
   const seite = seiteVonFahrt(z, richtung);
-  const andereWarten = z.vorgaenger.some((v) => seiteVonFahrt(z, v.richtung) !== seite && wartetVor(v, z));
-  if (z.vorrang && seite !== z.vorrang && z.vorgaenger.some((v) => seiteVonFahrt(z, v.richtung) === z.vorrang && wartetVor(v, z))) return false;
+  const andereWarten = (z.vorgaenger || []).some((v) => seiteVonFahrt(z, v.richtung) !== seite && wartetVor(v, z));
+  if (z.vorrang && seite !== z.vorrang && (z.vorgaenger || []).some((v) => seiteVonFahrt(z, v.richtung) === z.vorrang && wartetVor(v, z))) return false;
   if (z.letzteSeite === seite && andereWarten && seite !== z.vorrang) return false;
   return true;
 }
+// Der Smart-Zusammenführer berücksichtigt nur freigegebene, tatsächlich wartende Eingänge.
+// Ohne Vorrang folgt die Annahme einem festen Umlauf, auch bei drei dauerhaft belegten Seiten.
+function smartZusammenLaesstDurch(z, richtung, item) {
+  const smart = z.typ === "smartZusammen";
+  const inv = bandInventar(z);
+  const vol = Object.entries(inv.bestand).reduce((s, [i, n]) => s + itemVolumen(i) * n, 0);
+  const passt = (i) => smartZusammenZielPlatz(z.ziel, i, new Set(), inv.bestand[i] || 0, inv.anzahl, vol, z.richtung);
+  if (smart && (!z.ziel || !passt(item))) return false;
+  const seiten = z.typ === "omniMerger" ? ["links", "hinten", "rechts", "vorn"] : ["links", "hinten", "rechts"];
+  const bereit = new Set([seiteVonFahrt(z, richtung)]);
+  for (const v of z.vorgaenger || []) if (wartetVor(v, z)) {
+    const ware = hatPuffer(v.teil) ? pufferWare(v.teil, 0) : v.teil.items[0];
+    if (ware && (!smart || passt(ware.item))) bereit.add(seiteVonFahrt(z, v.richtung));
+  }
+  if (z.vorrang && bereit.has(z.vorrang)) return seiteVonFahrt(z, richtung) === z.vorrang;
+  const start = (seiten.indexOf(z.letzteSeite) + 1) % seiten.length;
+  for (let i = 0; i < seiten.length; i++) {
+    const seite = seiten[(start + i) % seiten.length];
+    if (bereit.has(seite)) return seiteVonFahrt(z, richtung) === seite;
+  }
+  return false;
+}
+// Bei weiteren Knoten wird bis zu einem annehmenden Gebäude geschaut. Ringe/offene Enden
+// gelten nicht als Ziel; unterwegs liegende Ware wird bei der Platzprüfung mitgezählt.
+function smartZusammenZielPlatz(ziel, item, gesehen = new Set(), unterwegs = 0, stueck = 0, vol = 0, richtung = null) {
+  if (!ziel) return false;
+  if (ziel.art === "gebaeude") {
+    const g = ziel.g, res = reservierungen();
+    const fach = fachSchluessel(g.id, istStation(g) ? "eingang" : "bestand");
+    const reserviertRein = res.rein.get(fach) || {};
+    unterwegs += reserviertRein[item] || 0;
+    stueck += Object.values(reserviertRein).reduce((s, n) => s + n, 0);
+    vol += Object.entries(reserviertRein).reduce((s, [i, n]) => s + itemVolumen(i) * n, 0);
+    return zielHatPlatz(g, item, unterwegs, stueck, vol);
+  }
+  const t = ziel.teil;
+  if (gesehen.has(t) || bandInventar(t).anzahl >= 25) return false;
+  if (richtung !== null && (t.typ === "zusammen" || t.typ === "smartZusammen" || t.typ === "omniMerger") && !seiteLaesstDurch(t, seiteVonFahrt(t, richtung), item)) return false;
+  const besucht = new Set(gesehen); besucht.add(t);
+  const inv = bandInventar(t);
+  unterwegs += inv.bestand[item] || 0; stueck += inv.anzahl;
+  vol += Object.entries(inv.bestand).reduce((s, [i, n]) => s + itemVolumen(i) * n, 0);
+  if (istVerteiler(t)) return (t.ausgaenge || []).some((a) => splitterFilterPasst(t, a.seite, item) && smartZusammenZielPlatz(a.ziel, item, besucht, unterwegs, stueck, vol, a.richtung));
+  if (t.ziel) return smartZusammenZielPlatz(t.ziel, item, besucht, unterwegs, stueck, vol, t.richtung);
+  const k = nachbarKachel(t, t.richtung), arm = bandteilAn(k.x, k.z, 0);
+  if (arm && arm.typ === "greifGeber" && (!arm.armFilter || arm.armFilter === item)) return smartZusammenZielPlatz(armZiel(arm), item, besucht, unterwegs + (arm.haelt === item ? 1 : 0), stueck + (arm.haelt ? 1 : 0), vol + (arm.haelt ? itemVolumen(arm.haelt) : 0));
+  return false;
+}
 // Phase 7d: "quelle" = das abgebende Teil. Kommt das Item von außerhalb des Segments, zählt der Durchsatz (Mk.1–Mk.4).
-function nimmAufBand(ziel, item, richtung, quelle = null) {
-  if (hatPuffer(ziel)) return legeInPuffer(ziel, item);      // Phase 7b Nachtrag: in den Puffer (solange < PUFFER_GROESSE)
-  if (!hatPlatz(ziel)) return false;
+function nimmAufBand(ziel, item, richtung, quelle = null, ware = null, pos = 0) {
+  if (bandInventar(ziel).anzahl >= 25) return false;
+  if (ziel.typ === "zusammen" || ziel.typ === "smartZusammen" || ziel.typ === "omniMerger") {
+    if (!seiteLaesstDurch(ziel, seiteVonFahrt(ziel, richtung), item)) return false;
+    if (ziel.typ === "zusammen" ? !zusammenLaesstDurch(ziel, richtung) : !smartZusammenLaesstDurch(ziel, richtung, item)) return false;
+    if (!legeInPuffer(ziel, item, ware)) return false;
+    ziel.letzteSeite = seiteVonFahrt(ziel, richtung);
+    return true;
+  }
+  if (hatPuffer(ziel)) return legeInPuffer(ziel, item, ware);      // Altbestände werden niemals gekürzt.
+  if (istGreifarm(ziel)) {
+    if (ziel.armFilter && ziel.armFilter !== item) return false;
+    if (!Array.isArray(ziel.reserve)) ziel.reserve = [];
+    ziel.reserve.push({ item, ...warenFlags(ware) });
+    return true;
+  }
   const vonAussen = !quelle || !ziel.segment || quelle.segment !== ziel.segment;
   if (vonAussen && !taktFrei(ziel)) return false;          // Phase 7d: Segment hat seinen Durchsatz erreicht
-  if (ziel.typ === "zusammen") {
-    if (!seiteLaesstDurch(ziel, seiteVonFahrt(ziel, richtung), item)) return false;   // Phase 7a: Seite gesperrt/gefiltert
-    if (!zusammenLaesstDurch(ziel, richtung)) return false;
-    ziel.letzteSeite = seiteVonFahrt(ziel, richtung);
-  }
-  legeAufBand(ziel, item, 0, richtung);
+  if (!Array.isArray(ziel.reserve)) ziel.reserve = [];
+  ziel.reserve.push({ item, pos: pos === 0.5 ? 0.5 : 0, von: richtung, ...warenFlags(ware) });
+  entladeBandReserve(ziel);
   if (vonAussen) verbraucheTakt(ziel);                     // Phase 7d
   return true;
 }
@@ -13504,7 +13768,7 @@ function splitterGibWeiter(t, it) {
   for (let i = 0; i < n; i++) {
     const a = t.ausgaenge[(t.naechster + i) % n];
     if (!splitterFilterPasst(t, a.seite, it.item)) continue;
-    const ok = a.ziel.art === "band" ? nimmAufBand(a.ziel.teil, it.item, a.richtung) : gebaeudeNimmtVomBand(a.ziel.g, it.item);
+    const ok = a.ziel.art === "band" ? nimmAufBand(a.ziel.teil, it.item, a.richtung, t, it) : gebaeudeNimmtVomBand(a.ziel.g, it.item);
     if (ok) { t.naechster = (t.naechster + i + 1) % n; return true; }
   }
   return false;
@@ -13521,7 +13785,7 @@ function streckenEnde(start, item) {
     const t = z.teil;
     if (gesehen.has(t)) return { art: "ring" };
     gesehen.add(t);
-    if (istVerteiler(t) || t.typ === "zusammen" || t.typ === "omniMerger") return { art: "knoten", teil: t };   // 7d: Omni-Merger
+    if (istVerteiler(t) || t.typ === "zusammen" || t.typ === "smartZusammen" || t.typ === "omniMerger") return { art: "knoten", teil: t };   // 7d: Omni-Merger
     for (const it of t.items || []) {
       stueck++;
       vol += itemVolumen(it.item);
@@ -13561,22 +13825,22 @@ function ausgangHatPlatz(a, item) {
   if (ende.art !== "gebaeude") return false;   // offenes Ende oder Ring: kein Ziel
   return zielHatPlatz(ende.g, item, ende.unterwegs, ende.stueck, ende.vol);
 }
-function legeAufAusgang(a, item) {
-  return a.ziel.art === "band" ? nimmAufBand(a.ziel.teil, item, a.richtung) : gebaeudeNimmtVomBand(a.ziel.g, item);
+function legeAufAusgang(a, item, ware = null, quelle = null) {
+  return a.ziel.art === "band" ? nimmAufBand(a.ziel.teil, item, a.richtung, quelle, ware) : gebaeudeNimmtVomBand(a.ziel.g, item);
 }
 function smartGibWeiter(t, it) {
   const n = t.ausgaenge.length;
   for (let i = 0; i < n; i++) {
     const a = t.ausgaenge[(t.naechster + i) % n];
     if (!splitterFilterPasst(t, a.seite, it.item) || !ausgangHatPlatz(a, it.item)) continue;
-    if (legeAufAusgang(a, it.item)) { t.naechster = (t.naechster + i + 1) % n; t.gehalten = false; return true; }
+    if (legeAufAusgang(a, it.item, it, t)) { t.naechster = (t.naechster + i + 1) % n; t.gehalten = false; return true; }
   }
   t.gehalten = true;                            // kein Ziel hat Platz: festhalten
   return false;
 }
 function ventilGibWeiter(t, it) {
   const vorn = t.ausgaenge.find((a) => a.seite === "vorn");
-  if (vorn && splitterFilterPasst(t, "vorn", it.item) && ausgangHatPlatz(vorn, it.item) && legeAufAusgang(vorn, it.item)) {
+  if (vorn && splitterFilterPasst(t, "vorn", it.item) && ausgangHatPlatz(vorn, it.item) && legeAufAusgang(vorn, it.item, it, t)) {
     t.ueberlauf = false;
     return true;
   }
@@ -13584,7 +13848,7 @@ function ventilGibWeiter(t, it) {
   for (let i = 0; i < seiten.length; i++) {
     const a = seiten[((t.naechster || 0) + i) % seiten.length];
     if (!splitterFilterPasst(t, a.seite, it.item)) continue;
-    if (legeAufAusgang(a, it.item)) { t.naechster = ((t.naechster || 0) + i + 1) % seiten.length; t.ueberlauf = true; return true; }
+    if (legeAufAusgang(a, it.item, it, t)) { t.naechster = ((t.naechster || 0) + i + 1) % seiten.length; t.ueberlauf = true; return true; }
   }
   return false;
 }
@@ -13597,16 +13861,18 @@ function ventilGibWeiter(t, it) {
    Splitter und Ventil arbeiten streng der Reihe nach; der Smart-Verteiler darf ein späteres Item vorziehen,
    wenn das vorderste gerade nirgends hin kann. t.items bleibt bei Verteilern leer. */
 // Phase 7d: Auch der Omni-Merger hat einen Puffer
-function hatPuffer(t) { return !!t && (istVerteiler(t) || t.typ === "omniMerger"); }
+function hatPuffer(t) { return !!t && (istVerteiler(t) || t.typ === "zusammen" || t.typ === "smartZusammen" || t.typ === "omniMerger"); }
 function pufferVon(t) {
   if (!hatPuffer(t)) return [];
   if (!Array.isArray(t.puffer)) t.puffer = [];
   return t.puffer;
 }
-function legeInPuffer(t, item) {
+function legeInPuffer(t, item, ware = null) {
   const puffer = pufferVon(t);
-  if (puffer.length >= (t.typ === "omniMerger" ? BAENDER.omniPuffer : PUFFER_GROESSE)) return false;   // 7d: Omni-Merger
+  if (bandInventar(t).anzahl >= 25) return false;
+  if (!Array.isArray(t.pufferFlags)) t.pufferFlags = puffer.map(() => ({}));
   puffer.push(item);
+  t.pufferFlags.push(warenFlags(ware));
   return true;
 }
 // Ein Schritt eines Verteilers: Items aus dem Puffer auf die Ausgänge verteilen
@@ -13624,11 +13890,12 @@ function verteilerSchritt(t, dt) {
       for (let i = 0; i < puffer.length; i++) {
         if (geprueft.has(puffer[i])) continue;
         geprueft.add(puffer[i]);
-        if (smartGibWeiter(t, { item: puffer[i] })) { index = i; break; }
+        if (smartGibWeiter(t, pufferWare(t, i))) { index = i; break; }
       }
-    } else if (gibWeiter(t, { item: puffer[0] })) index = 0;
+    } else if (gibWeiter(t, pufferWare(t, 0))) index = 0;
     if (index < 0) break;
     puffer.splice(index, 1);
+    if (t.pufferFlags) t.pufferFlags.splice(index, 1);
     t.takt -= 1;
     raus++;
   }
@@ -13642,7 +13909,8 @@ function gibWeiter(t, it) {
   if (istVerteiler(t)) return splitterGibWeiter(t, it);
   const z = t.ziel;
   if (!z) return false;
-  if (z.art === "band") return nimmAufBand(z.teil, it.item, t.richtung, t);   // 7d: Quelle für den Durchsatz
+  if (t.typ === "smartZusammen" && !smartZusammenZielPlatz(z, it.item, new Set(), 0, 0, 0, t.richtung)) return false;
+  if (z.art === "band") return nimmAufBand(z.teil, it.item, t.richtung, t, it);   // 7d: Quelle für den Durchsatz
   return gebaeudeNimmtVomBand(z.g, it.item);
 }
 
@@ -13764,9 +14032,10 @@ function baenderSchritt(dt) {
   for (const t of bandReihenfolge) {
     if (istGreifarm(t)) { greifarmSchritt(t, dt); continue; }
     if (istVerteiler(t)) { verteilerSchritt(t, dt); if (warnen) pruefeWarnungVerteiler(t); continue; }   // Phase 7b Nachtrag: Puffer
-    if (t.typ === "omniMerger") { omniSchritt(t, dt); continue; }   // Phase 7d
+    if (t.typ === "omniMerger" || t.typ === "zusammen" || t.typ === "smartZusammen") { omniSchritt(t, dt); continue; }   // Gepufferte Zusammenführungen, mit Zielprüfung beim Smart-Typ.
     const tempo = bandTempo(t);
     if (tempo <= 0) continue;                     // Segment pausiert
+    entladeBandReserve(t);
     bewegeItems(t, tempo * dt);
     if (t.typ === "pruefband") pruefeAufTeststrecke(t);   // W2b (M7): jedes Stück einmal prüfen
     if (t.typ === "aussweiche") weicheEntsorgt(t);        // W2b (M7): defekte Stücke aussortieren
@@ -13784,16 +14053,17 @@ function baenderSchritt(dt) {
       t.ioFixiert = false;
       t.warnung = false;
     }
+    entladeBandReserve(t);
   }
   // Abläufe: Gebäude legen Items auf den Anfang "ihres" Bands, sobald dort Platz ist
   for (const t of bandAblaeufe) {
     const g = spiel.gebaeude.get(t.ablaufVon);
     if (!g || bandTempo(t) <= 0) continue;
-    if (!hatPlatz(t)) continue;
+    if (bandInventar(t).anzahl >= 25) continue;
     if (!taktFrei(t)) continue;                   // Phase 7d: Durchsatz des Segments erreicht
     g.ablaufFrei = spiel.zeit;                    // das Band nimmt ab (Kuriere müssen nicht helfen)
     const item = gebaeudeGibAb(g, t);
-    if (item) { legeAufBand(t, item, 0, t.richtung); verbraucheTakt(t); }
+    if (item) nimmAufBand(t, item, t.richtung);
   }
 }
 
@@ -13805,12 +14075,14 @@ function omniSchritt(t, dt) {
   const puffer = pufferVon(t);
   const takt = BAENDER.knotenTempo / BAENDER.mindestAbstand;
   t.takt = Math.min(1, (t.takt || 0) + dt * takt);
-  if (!puffer.length) { t.stau = 0; return; }
+  if (!puffer.length) { t.stau = 0; t.gehalten = false; return; }
   if (t.takt < 1) return;
   const z = t.ziel;
-  const ok = !!z && (z.art === "band" ? nimmAufBand(z.teil, puffer[0], t.richtung, t) : gebaeudeNimmtVomBand(z.g, puffer[0]));
-  if (ok) { puffer.shift(); t.takt -= 1; t.stau = 0; t.warnung = false; return; }
+  if (t.typ === "smartZusammen" && !smartZusammenZielPlatz(z, puffer[0], new Set(), 0, 0, 0, t.richtung)) { t.stau += dt; t.gehalten = true; return; }
+  const ok = !!z && (z.art === "band" ? nimmAufBand(z.teil, puffer[0], t.richtung, t, pufferWare(t, 0)) : gebaeudeNimmtVomBand(z.g, puffer[0]));
+  if (ok) { puffer.shift(); if (t.pufferFlags) t.pufferFlags.shift(); t.takt -= 1; t.stau = 0; t.warnung = false; t.gehalten = false; return; }
   t.stau += dt;
+  t.gehalten = t.typ === "smartZusammen";
   if (warnleuchtenAktiv() && z && z.art === "gebaeude" && wareFalschGeroutet(z.g, puffer[0])) { t.warnung = true; z.g.warnung = true; }
 }
 
@@ -13911,16 +14183,18 @@ function armKandidaten(g) {
   return [];
 }
 // Greift ein passendes Item. Rückgabe: Item oder null
-function armGreife(a) {
+function armGreife(a, puffern = false) {
+  if (bandInventar(a).anzahl >= 25) return null;
+  a.haeltFlags = null;
   const ziel = armZiel(a), quelle = armQuelle(a);
   if (!ziel || !quelle) return null;
   // Phase 7a (Nachtrag 3): der Nehmer greift nur aus Gebäuden, der Geber nur vom Band
   if ((a.typ === "greifarm") !== (quelle.art === "gebaeude")) return null;
-  const passt = (item) => (!a.armFilter || a.armFilter === item) && armZielNimmt(ziel, item);
+  const passt = (item) => (!a.armFilter || a.armFilter === item) && (puffern ? (ziel.art === "band" || !wareFalschGeroutet(ziel.g, item)) : armZielNimmt(ziel, item));
   if (quelle.art === "band") {
     const t = quelle.teil;
     const it = t.items[0];
-    if (it && it.pos >= 0.5 && passt(it.item)) { t.items.shift(); return it.item; }
+    if (it && it.pos >= 0.5 && passt(it.item)) { a.haeltFlags = warenFlags(it); t.items.shift(); return it.item; }
     return null;
   }
   const g = quelle.g;
@@ -13933,14 +14207,19 @@ function armGreife(a) {
   }
   return null;
 }
+// Reserveentnahme erhält die Kennzeichen der Handware unverändert.
+function armGreifeWare(a) {
+  const vorher = a.haeltFlags;
+  const item = armGreife(a, true);
+  const ware = item ? { item, ...warenFlags(a.haeltFlags) } : null;
+  a.haeltFlags = vorher;
+  return ware;
+}
 function armLegeAb(a, item) {
   const ziel = armZiel(a);
   if (!ziel) return false;
   if (ziel.art === "band") {
-    if (!hatPlatz(ziel.teil, 0.5) || !taktFrei(ziel.teil)) return false;   // 7d: Durchsatz
-    legeAufBand(ziel.teil, item, 0.5, ziel.teil.richtung);
-    verbraucheTakt(ziel.teil);
-    return true;
+    return nimmAufBand(ziel.teil, item, ziel.teil.richtung, a, a.haeltFlags, 0.5);
   }
   return gebaeudeNimmtVomBand(ziel.g, item);
 }
@@ -13948,12 +14227,21 @@ function armLegeAb(a, item) {
 // a.winkel (0 = hinten, π = vorn) liest die 3D-Darstellung.
 function greifarmSchritt(a, dt) {
   const zyklus = BAENDER.greifZyklus * forschungsWirkung("greifZeit");
+  if (!Array.isArray(a.reserve)) a.reserve = [];
   if (a.haelt) {
     a.timer = Math.min(zyklus, (a.timer || 0) + dt);
     a.winkel = Math.PI * a.timer / zyklus;
     if (a.timer < zyklus) return;
-    if (armLegeAb(a, a.haelt)) { a.haelt = null; a.timer = 0; a.zurueck = zyklus * 0.5; a.wartet = 0; }
-    else a.wartet = (a.wartet || 0) + dt;
+    if (armLegeAb(a, a.haelt)) { a.haelt = null; a.haeltFlags = null; a.timer = 0; a.zurueck = zyklus * 0.5; a.wartet = 0; }
+    else {
+      a.wartet = (a.wartet || 0) + dt;
+      a.reserveTimer = (a.reserveTimer || 0) + dt;
+      if (a.reserveTimer >= zyklus && bandInventar(a).anzahl < 25) {
+        const ware = armGreifeWare(a);
+        if (ware) a.reserve.push(ware);
+        a.reserveTimer = 0;
+      }
+    }
     return;
   }
   if (a.zurueck > 0) {
@@ -13962,21 +14250,22 @@ function greifarmSchritt(a, dt) {
     return;
   }
   a.winkel = 0;
-  const item = armGreife(a);
-  if (item) { a.haelt = item; a.timer = 0; a.wartet = 0; }
+  const ware = a.reserve.length ? a.reserve.shift() : armGreifeWare(a);
+  if (ware) { a.haelt = ware.item; a.haeltFlags = warenFlags(ware); a.timer = 0; a.wartet = 0; }
 }
 
 /* --- Bauen und Abreißen --- */
 
 // Bleiben alle Zugänge und Personen erreichbar, wenn diese Kacheln gesperrt werden?
 // "extraZiele" (Phase 7a, Nachtrag 3: Einfügen): weitere Kacheln, die erreichbar sein müssen (neue Zugänge)
-function bleibtErreichbarMit(gesperrt, extraZiele = []) {
+function bleibtErreichbarMit(gesperrt, extraZiele = [], freigegeben = []) {
   const B = level.breite, T = level.tiefe;
   const frei = new Uint8Array(B * T);
   for (let x = 0; x < B; x++) for (let z = 0; z < T; z++) frei[x * T + z] = rasterDaten[x][z].begehbar ? 1 : 0;
+  for (const c of freigegeben) if (istImRaster(c.x, c.z) && !holeKachel(c.x, c.z).objekt) frei[c.x * T + c.z] = 1;
   for (const c of gesperrt) frei[c.x * T + c.z] = 0;
-  // Phase 7b Nachtrag: Der Zugang eines Lagers darf zugebaut werden (dann kommen nur noch Bänder und Greifarme heran)
-  const zugebaut = (g) => zugangGesperrt(g) || (istLagerTyp(typVon(g)) && gesperrt.some((c) => c.x === g.zugang.x && c.z === g.zugang.z));
+  // Alte Blockaden dürfen repariert werden; neu hinzugefügte sperren keinen freien Zugang.
+  const zugebaut = (g) => zugangGesperrt(g) && !freigegeben.some((c) => c.x === g.zugang.x && c.z === g.zugang.z);
   const ziele = gebaeudeListe((g) => !zugebaut(g)).map((g) => g.zugang).filter((k) => istImRaster(k.x, k.z));
   for (const p of allePersonen()) {
     const k = personKachel(p);
@@ -14004,28 +14293,30 @@ function bleibtErreichbarMit(gesperrt, extraZiele = []) {
 // Prüft, ob ein Bandteil auf eine Kachel passt. Rückgabe: { passt, gruende, ersetzt (vorhandenes Band) }
 //   ersetzen: ein vorhandenes Band/Übergang darf umgelegt (neu ausgerichtet) werden
 //   laden: beim Laden des Spielstands (Personen zählen nicht, keine Erreichbarkeits-Prüfung)
-function pruefeBandteil(typ, x, z, richtung, { ersetzen = false, laden = false, gesperrt = [] } = {}) {
+function pruefeBandteil(typ, x, z, richtung, { ersetzen = false, laden = false, gesperrt = [], freigegeben = [], ignoriereId = null, ignorierteIds = [] } = {}) {
   const info = bandTypNach.get(typ);
   const gruende = [];
   const k = holeKachel(x, z);
+  const istIgnoriert = (id) => id === ignoriereId || ignorierteIds.includes(id);
   let ersetzt = null;
   if (!info || info.nurWerkzeug) gruende.push("Unbekanntes Bandteil.");
   else if (!k) gruende.push("Außerhalb der Halle.");
   else if (k.objekt) gruende.push("Hier steht ein Gebäude.");
+  else if (!laden && arbeitsZugangBei(x, z)) gruende.push("Hier muss der Arbeitszugang (Pfeil) frei bleiben – auch über der Kachel.");
   else if (info.hoch) {
-    if (k.hochband) gruende.push("Hier ist schon eine Brücke.");
-    else if (k.band && ["rampeHoch", "rampeRunter"].includes(spiel.baender.get(k.band)?.typ)) gruende.push("Hier liegt eine Rampe.");
+    if (k.hochband && !istIgnoriert(k.hochband)) gruende.push("Hier ist schon eine Brücke.");
+    else if (k.band && !istIgnoriert(k.band) && ["rampeHoch", "rampeRunter"].includes(spiel.baender.get(k.band)?.typ)) gruende.push("Hier liegt eine Rampe.");
   } else {
-    const vorhanden = k.band ? spiel.baender.get(k.band) : null;
+    const vorhanden = k.band && !istIgnoriert(k.band) ? spiel.baender.get(k.band) : null;
     if (vorhanden) {
       const umlegbar = ersetzen && ["band", "uebergang"].includes(vorhanden.typ) && vorhanden.typ === typ;
       if (umlegbar) ersetzt = vorhanden; else gruende.push("Hier liegt schon ein Bandteil.");
     }
     if (!laden && istStationsZugang(x, z)) gruende.push("Hier stehen Mitarbeiter, um ein Gebäude zu bedienen (Zugang).");   // 7b Nachtrag: nur Stationen
-    if ((typ === "rampeHoch" || typ === "rampeRunter") && k.hochband) gruende.push("Über dieser Kachel verläuft eine Brücke.");
+    if ((typ === "rampeHoch" || typ === "rampeRunter") && k.hochband && !istIgnoriert(k.hochband)) gruende.push("Über dieser Kachel verläuft eine Brücke.");
     if (!info.begehbar && !laden) {
       if (allePersonen().some((p) => personBeruehrtKachel(p, { x, z }))) gruende.push("Hier steht gerade jemand.");
-      else if (!gruende.length && !bleibtErreichbarMit([...gesperrt, { x, z }])) gruende.push("Das würde jemanden einsperren oder einen Zugang abschneiden.");
+      else if (!gruende.length && !bleibtErreichbarMit([...gesperrt, { x, z }], [], freigegeben)) gruende.push("Das würde jemanden einsperren oder einen Zugang abschneiden.");
     }
   }
   if (richtung < 0 || richtung > 3) gruende.push("Ungültige Richtung.");
@@ -14045,23 +14336,27 @@ function setzeBandteil(typ, x, z, richtung, daten = {}) {
   const t = {
     id: daten.id || "b" + spiel.naechsteBandId++,
     typ, x, z, richtung,
-    items: info.spur || typ === "zusammen"
-      ? (daten.items || []).map((i) => ({ item: i.item, pos: Math.max(0, Math.min(1, i.pos || 0)), von: i.von ?? richtung }))
-      : VERTEILER_TYPEN.includes(typ) ? [] : undefined,
+    items: info.spur
+      ? (daten.items || []).map((i) => ({ item: i.item, pos: Math.max(0, Math.min(1, i.pos || 0)), von: i.von ?? richtung, ...warenFlags(i) }))
+      : VERTEILER_TYPEN.includes(typ) || typ === "zusammen" || typ === "smartZusammen" || typ === "omniMerger" ? [] : undefined,
     // Phase 7b Nachtrag: Puffer der Verteiler (ältere Spielstände: leer; Items, die auf dem Verteiler lagen, kommen hinein)
-    puffer: VERTEILER_TYPEN.includes(typ) || typ === "omniMerger"   // 7d: auch der Omni-Merger
+    puffer: VERTEILER_TYPEN.includes(typ) || typ === "zusammen" || typ === "smartZusammen" || typ === "omniMerger"   // Alte Spur-Items der Zusammenführung genau einmal in den Puffer migrieren.
       ? [...(Array.isArray(daten.puffer) ? daten.puffer : []), ...(daten.items || []).map((i) => i.item)].filter((i) => typeof i === "string")
       : undefined,
+    pufferFlags: VERTEILER_TYPEN.includes(typ) || typ === "zusammen" || typ === "smartZusammen" || typ === "omniMerger"
+      ? [...(Array.isArray(daten.puffer) ? daten.puffer : []).map((i, n) => warenFlags(daten.pufferFlags && daten.pufferFlags[n])), ...(daten.items || []).map(warenFlags)] : undefined,
     tempo: daten.tempo || null,
     name: daten.name || null,
     seiten: seitenAusDaten(daten),             // Phase 7a: Seiten und Filter (ersetzt "modus" und "filter")
     vorrang: daten.vorrang || null,
     armFilter: daten.armFilter || null,
     haelt: daten.haelt || null,
+    haeltFlags: daten.haelt ? warenFlags(daten.haeltFlags) : null,
+    reserve: (Array.isArray(daten.reserve) ? daten.reserve : []).filter((w) => w && typeof w.item === "string").map((w) => ({ item: w.item, pos: w.pos === 0.5 ? 0.5 : 0, von: w.von ?? richtung, ...warenFlags(w) })),
     ablaufFilter: Array.isArray(daten.ablaufFilter) ? [...daten.ablaufFilter] : [],
     bruecke: daten.bruecke || null,
     ausDepot: !!daten.ausDepot,
-    stau: 0, timer: 0, zurueck: 0, winkel: 0, naechster: 0,
+    stau: 0, timer: 0, zurueck: 0, winkel: 0, naechster: 0, letzteSeite: daten.letzteSeite || null,
   };
   if (t.items) t.items.sort((a, b) => b.pos - a.pos);
   // Gespeicherte IDs: Zähler weiterschieben, damit keine doppelt vergeben wird
@@ -14222,6 +14517,7 @@ function entferneBandteil(id, { insDepot = false } = {}) {
   for (const it of t.items || []) bucheItems(items, { [it.item]: 1 });
   for (const item of pufferVon(t)) bucheItems(items, { [item]: 1 });   // Phase 7b Nachtrag: Verteiler-Puffer
   if (t.haelt) bucheItems(items, { [t.haelt]: 1 });
+  for (const ware of t.reserve || []) bucheItems(items, { [ware.item]: 1 });
   bucheInsLager(items, insDepot);
   if (insDepot || t.ausDepot) spiel.depot.baender[t.typ] = (spiel.depot.baender[t.typ] || 0) + 1;
   else if (bandTyp(t).preis > 0) bucheGeld(bandTyp(t).preis, "baender");
@@ -14272,7 +14568,7 @@ function planeLaufendeNeu() {
 function setzeBandEinstellung(id, feld, wert) {
   const t = spiel.baender.get(id);
   if (!t) return false;
-  const knoten = istVerteiler(t) || t.typ === "zusammen";
+  const knoten = istVerteiler(t) || t.typ === "zusammen" || t.typ === "smartZusammen" || t.typ === "omniMerger";
   if (feld === "seiteSperren" && knoten && SEITEN_NAMEN[wert]) {          // Phase 7a: Seite sperren / freigeben
     const e = t.seiten[wert] || (t.seiten[wert] = { gesperrt: false, filter: {} });
     e.gesperrt = !e.gesperrt;
@@ -14286,7 +14582,7 @@ function setzeBandEinstellung(id, feld, wert) {
     else delete e.filter[item];
   }
   else if (feld === "seiteZurueck" && knoten) delete t.seiten[wert];
-  else if (feld === "vorrang" && t.typ === "zusammen") t.vorrang = ["links", "hinten", "rechts"].includes(wert) ? wert : null;
+  else if (feld === "vorrang" && (t.typ === "zusammen" || t.typ === "smartZusammen" || t.typ === "omniMerger")) t.vorrang = (t.typ === "omniMerger" ? ["links", "hinten", "rechts", "vorn"] : ["links", "hinten", "rechts"]).includes(wert) ? wert : null;
   else if (feld === "armFilter" && istGreifarm(t)) t.armFilter = wert || null;
   else if (feld === "ablaufFilter") {
     const liste = new Set(t.ablaufFilter);
@@ -14309,10 +14605,13 @@ function setzeBandEinstellung(id, feld, wert) {
 function bandteilDaten(t) {
   return {
     id: t.id, typ: t.typ, x: t.x, z: t.z, richtung: t.richtung,
-    items: t.items ? t.items.map((i) => ({ item: i.item, pos: Math.round(i.pos * 1000) / 1000, von: i.von })) : undefined,
+    items: t.items ? t.items.map((i) => ({ item: i.item, pos: Math.round(i.pos * 1000) / 1000, von: i.von, ...warenFlags(i) })) : undefined,
     tempo: t.tempo, name: t.name, seiten: t.seiten, vorrang: t.vorrang,
     armFilter: t.armFilter, haelt: t.haelt, ablaufFilter: t.ablaufFilter, bruecke: t.bruecke, ausDepot: t.ausDepot,
     puffer: hatPuffer(t) ? [...pufferVon(t)] : undefined,   // Phase 7b Nachtrag (7d: auch Omni-Merger)
+    pufferFlags: hatPuffer(t) ? pufferVon(t).map((item, i) => warenFlags(pufferWare(t, i))) : undefined,
+    haeltFlags: t.haelt ? warenFlags(t.haeltFlags) : undefined, letzteSeite: t.letzteSeite || undefined,
+    reserve: (t.reserve || []).map((w) => ({ item: w.item, pos: w.pos === 0.5 ? 0.5 : 0, von: w.von ?? t.richtung, ...warenFlags(w) })),
   };
 }
 
@@ -14462,7 +14761,8 @@ function schuleUm(id, rolle, { vonSelbst = false } = {}) {
 // Freie Forschungsstationen (ohne Arbeiter, nicht automatisch), die nächste zuerst
 function freieStationen(art, p = null) {
   const k = p ? personKachel(p) : null;
-  return gebaeudeListe((g) => istStation(g) && !g.arbeiterId && !g.automatik && typVon(g).art !== "aussenposten"   // W3 (M1): nur Scouts&& (!art || typVon(g).art === art)
+  return gebaeudeListe((g) => istStation(g) && !g.arbeiterId && !g.automatik && typVon(g).art !== "aussenposten"
+    && (!art || typVon(g).art === art)   // AP01: Forschungsaktion darf keine Produktionsstation wählen.
     && (forscherErlaubt() || !istForschungsstation(g)))   // Phase 7d: HR-003
     .sort((a, b) => (k ? abstand(a.zugang, k) - abstand(b.zugang, k) : 0));
 }
@@ -15666,8 +15966,7 @@ function baueZugangsPfeil(zugang, richtung, material = pfeilMaterial) {
 // Phase 7b Nachtrag: Lager (Kiste, Schrank, Hauptlager, Zonen, Mülltonne) kann man von überall nutzen –
 // den orangen Zugangspfeil gibt es nur noch an Stationen (dort steht der Arbeiter).
 function zeigtZugangsPfeil(typ) {
-  const t = gebaeudeTypNach.get(typ);
-  return !!t && (t.kategorie === "station" || t.kategorie === "maschine");   // Phase 7d: auch Maschinen
+  return gebaeudeTypNach.has(typ); // Alle reservierten Arbeitszugänge sichtbar machen.
 }
 
 /* --- Status-Symbole über den Stationen (kleine runde Schilder, immer zur Kamera gedreht) --- */
@@ -16632,7 +16931,8 @@ function baueBandModell(t) {
     case "splitter":
     case "smartVerteiler":
     case "ventil":
-    case "zusammen": {
+    case "zusammen":
+    case "smartZusammen": {
       const farbe = t.typ === "smartVerteiler" ? GRAFIK.farbeSmartVerteiler : t.typ === "ventil" ? GRAFIK.farbeVentil
         : istVerteiler(t) ? GRAFIK.farbeSplitter : GRAFIK.farbeZusammen;
       quader(g, 0.92, H - 0.01, 0.92, farbe, 0, 0, 0);
@@ -16661,6 +16961,11 @@ function baueBandModell(t) {
           bandPfeil(g, r.x * 0.3, dach, r.z * 0.3, gebaeudeWinkel({ x: -r.x, z: -r.z }), 0.32);
         }
         bandPfeil(g, 0, dach, 0.12, 0, 0.5);
+        if (t.typ === "smartZusammen") {
+          quader(g, 0.34, 0.16, 0.05, GRAFIK.farbeMetallDunkel, 0, H + 0.28, 0.44);
+          quader(g, 0.26, 0.08, 0.02, GRAFIK.farbeSmartVerteiler, 0, H + 0.32, 0.47);
+          for (const x of [-0.35, 0.35]) quader(g, 0.06, 0.02, 0.72, GRAFIK.farbeSmartVerteiler, x, dach - 0.015, 0);
+        }
       }
       break;
     }
@@ -17379,14 +17684,30 @@ for (const m of [bandVorschauPlatten, bandVorschauPfeile]) {
 const farbeVorschauOk3d = new THREE.Color(GRAFIK.farbeVorschauOk);
 const farbeVorschauFehler3d = new THREE.Color(GRAFIK.farbeVorschauFehler);
 // liste: [{ x, z, richtung (oder null), typ, passt, abriss }]  – leer/null blendet aus
+const smartBandVorschauen = [];
 function zeigeBandVorschau(liste) {
-  let n = 0, np = 0;
+  for (const m of smartBandVorschauen) m.visible = false;
+  let n = 0, np = 0, smart = 0;
   for (const e of liste || []) {
     if (n >= MAX_VORSCHAU) break;
     const mitte = kachelZuWelt(e.x, e.z);
     const typ = e.typ && bandTypNach.get(e.typ);
     const y = rasterHoehe + (typ && typ.ebeneEin !== undefined ? (bahnHoehe(typ.ebeneEin) + bahnHoehe(typ.ebeneAus)) / 2 : GRAFIK.bandHoehe) + 0.03;
     const farbe = e.passt && !e.abriss ? farbeVorschauOk3d : farbeVorschauFehler3d;
+    if (e.typ === "smartZusammen" && !e.abriss) {
+      let modell = smartBandVorschauen[smart];
+      if (!modell) {
+        modell = baueBandModell({ typ: "smartZusammen", tempo: STANDARD_BAND_TEMPO }).gruppe;
+        const material = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, depthWrite: false });
+        modell.traverse((teil) => { if (teil.isMesh) { teil.material = material; teil.castShadow = teil.receiveShadow = false; } });
+        modell.userData.vorschauMaterial = material;
+        szene.add(modell); smartBandVorschauen[smart] = modell;
+      }
+      modell.userData.vorschauMaterial.color.copy(farbe);
+      modell.position.set(mitte.x, rasterHoehe + 0.015, mitte.z);
+      modell.rotation.y = gebaeudeWinkel(RICHTUNGEN[e.richtung ?? 0]);
+      modell.visible = true; smart++;
+    }
     hilfsMatrix.makeTranslation(mitte.x, y, mitte.z);
     bandVorschauPlatten.setMatrixAt(n, hilfsMatrix);
     bandVorschauPlatten.setColorAt(n, farbe);
@@ -17623,6 +17944,7 @@ const kontor = { offen: false, reiter: "auftraege", klickSperre: 0, html: "" }; 
 let forschungOffen = false;   // Phase 5: Techtree-Fenster
 let insolvenzOffen = false;   // Phase 5: Spielende
 let dialogAktion = null;
+let dialogVorherigerFokus = null;
 let vorschauErgebnis = null;  // Ergebnis von passtGebaeude für die Bau-Vorschau
 const anzeige = { struktur: -1, version: -1, timer: 0, infoStrukturFehlt: false };
 let auswahlBandId = null;     // Phase 6: Bandteil im Info-Fenster
@@ -17980,6 +18302,7 @@ function aktualisiereBauTipp() {
 
 // Bau- bzw. Verschiebe-Vorschau unter der Maus aktualisieren
 function aktualisiereVorschau() {
+  if (objektZug?.aktiv) return; // Die Ziehvorschau steuert ihr eigenes Ziel.
   const w = bau.werkzeug;
   const aktiv = bau.offen && w && hoverKachel && !eingaben3dGesperrt;
   const verschiebt = w && w.art === "verschieben" && w.id ? spiel.gebaeude.get(w.id) : null;
@@ -18998,8 +19321,8 @@ $("info-schliessen").addEventListener("click", () => waehleGebaeude(null));
 
 /* --- Lager-Fenster --- */
 function aktualisiereSperre() {
-  sperre3dEingaben(lagerOffen || dialogOffen || kontor.offen || forschungOffen || insolvenzOffen || einstellungsFenster.offen
-    || (typeof rezeptFenster !== "undefined" && rezeptFenster.offen));
+  synchronisiereModalFokus();
+  sperre3dEingaben(!!oberstesModal());
   aktualisiereVorschau();
   aktualisiereAbrissMarke();
 }
@@ -19060,6 +19383,7 @@ ob.lagerOverlay.addEventListener("click", (e) => { if (e.target === ob.lagerOver
 
 /* --- Bestätigungsfenster --- */
 function frage({ titel, text, ok }, beiOk) {
+  dialogVorherigerFokus = document.activeElement;
   ob.dialogTitel.textContent = titel;
   ob.dialogText.textContent = text;
   ob.dialogOk.textContent = ok;
@@ -19077,6 +19401,8 @@ function schliesseDialog(bestaetigt) {
   dialogAktion = null;
   aktualisiereSperre();
   if (bestaetigt && aktion) aktion();
+  if (dialogVorherigerFokus?.isConnected && !dialogVorherigerFokus.closest("[hidden], [inert]")) dialogVorherigerFokus.focus({ preventScroll: true });
+  dialogVorherigerFokus = null;
 }
 ob.dialogOk.addEventListener("click", () => schliesseDialog(true));
 ob.dialogAbbrechen.addEventListener("click", () => schliesseDialog(false));
@@ -20364,7 +20690,7 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault(); e.stopImmediatePropagation(); schliesseEinstellungen(); return;
   }
   const ziel = e.target;
-  if (ziel instanceof HTMLInputElement || ziel instanceof HTMLSelectElement || ziel instanceof HTMLTextAreaElement) return;
+  if (ziel instanceof HTMLInputElement || ziel instanceof HTMLSelectElement || ziel instanceof HTMLTextAreaElement || ziel.isContentEditable) return;
   // Phase 7a (Nachtrag 3): Strg + C / Strg + V – Auswahl kopieren und einfügen (feste Tasten)
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && ["c", "v"].includes(e.key.toLowerCase())) {
     if (dialogOffen || insolvenzOffen || einstellungsFenster.offen || rezeptFenster.offen || lagerOffen || kontor.offen || forschungOffen) return;
@@ -20459,9 +20785,9 @@ for (const element of [ob.bauLeiste, ob.info, ob.lagerOverlay, ob.dialogOverlay,
                        ob.kontorOverlay, ob.forschungOverlay, ob.insolvenzOverlay, ob.hudBankrott, ob.einstellungenOverlay,
                        $("rezepte-overlay"), $("rezept-stapel")]) {   // Phase 7a (Nachtrag 2): Rezepte
   for (const art of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
-    element.addEventListener(art, (e) => e.stopPropagation());
+    element.addEventListener(art, (e) => { if (art === "pointerdown") { if (typeof breche3dGestenAb === "function") breche3dGestenAb(); sperre3dEingaben(!!oberstesModal()); } e.stopPropagation(); });
   }
-  element.addEventListener("pointerenter", () => setzeHover(null));
+  element.addEventListener("pointerenter", (e) => { if (!e.buttons) { if (typeof breche3dGestenAb === "function") breche3dGestenAb(); sperre3dEingaben(!!oberstesModal()); } setzeHover(null); });
 }
 
 /* --- Laufende Aktualisierung (aus der Spielschleife, höchstens 4-mal pro Sekunde) --- */
@@ -20935,35 +21261,64 @@ function oeffneFliessbandWerkzeug(richtung, anker = null) {
 function bandInfoKnopf(aktion, text, extra = "", klasse = "lz-knopf") {
   return `<button class="${klasse}" type="button" data-band-aktion="${aktion}" ${extra}>${text}</button>`;
 }
-// Phase 7a: Seiten und Filter eines Splitters (Ausgänge) bzw. einer Zusammenführung (Eingänge)
+// Suchausnahmen bleiben je Bauteil und Seite erhalten; der Katalog wird erst bei Bedarf geöffnet.
+const bandFilterUi = new Map();
+function bandFilterZustand(t, seite) {
+  const key = `${t.id}:${seite}`;
+  if (!bandFilterUi.has(key)) bandFilterUi.set(key, { suche: "", offen: false, item: "" });
+  return bandFilterUi.get(key);
+}
+function bandFilterTreffer(t, seite) {
+  const ui = bandFilterZustand(t, seite), suche = ui.suche.trim().toLocaleLowerCase("de");
+  const quelle = typeof bandQuellItems === "function" ? bandQuellItems(t, istVerteiler(t) ? null : seite) : [];
+  const kandidaten = suche ? alleItems().filter((id) => itemInfo(id).name.toLocaleLowerCase("de").includes(suche) || id.toLowerCase().includes(suche)) : [...new Set([...quelle, ...Object.keys(seiteEinstellung(t, seite)?.filter || {})])];
+  return kandidaten.slice(0, 25);
+}
+function bandFilterOptionen(t, seite) {
+  const ui = bandFilterZustand(t, seite), treffer = bandFilterTreffer(t, seite);
+  if (!treffer.includes(ui.item)) ui.item = treffer[0] || "";
+  return treffer.map((id) => `<option value="${htmlSicher(id)}" ${ui.item === id ? "selected" : ""}>${htmlSicher(itemInfo(id).name)}</option>`).join("");
+}
+function bandFilterChip(t, seite, item) {
+  const e = seiteEinstellung(t, seite) || { filter: {} };
+  const zustand = e.filter[item] === true ? "nur" : e.filter[item] === false ? "nein" : "";
+  const titel = zustand === "nur" ? "Nur dieses Item – Klick: sperren" : zustand === "nein" ? "Gesperrt – Klick: Filter entfernen" : "Klick: nur dieses Item";
+  return `<button type="button" class="filter-knopf seiten-chip" data-band-aktion="seiteFilter" data-seite="${seite}" data-item="${htmlSicher(item)}" data-zustand="${zustand}" aria-label="${htmlSicher(itemInfo(item).name + ': ' + titel)}" title="${titel}" style="--item-farbe:${itemInfo(item).farbe}">${zustand === "nur" ? "✓ " : zustand === "nein" ? "✕ " : ""}${htmlSicher(itemInfo(item).name)}</button>`;
+}
 function seitenHtml(t) {
-  const seiten = istVerteiler(t) ? ["links", "vorn", "rechts"] : ["links", "hinten", "rechts"];
-  const angeschlossen = (seite) => istVerteiler(t)
-    ? t.ausgaenge.some((a) => a.seite === seite)
-    : t.vorgaenger.some((v) => seiteVonFahrt(t, v.richtung) === seite);
+  const seiten = t.typ === "omniMerger" ? ["links", "hinten", "rechts", "vorn"] : istVerteiler(t) ? ["links", "vorn", "rechts"] : ["links", "hinten", "rechts"];
+  const angeschlossen = (seite) => istVerteiler(t) ? t.ausgaenge.some((a) => a.seite === seite) : t.vorgaenger.some((v) => seiteVonFahrt(t, v.richtung) === seite);
   const zeilen = seiten.map((seite) => {
-    const e = seiteEinstellung(t, seite) || { gesperrt: false, filter: {} };
-    const chips = alleItems().map((item) => {
-      const zustand = e.filter[item] === true ? "nur" : e.filter[item] === false ? "nein" : "";
-      const titel = zustand === "nur" ? "nur diese (✓) – Klick: sperren" : zustand === "nein" ? "gesperrt (✕) – Klick: Filter weg" : "Klick: nur diese";
-      return `<button type="button" class="filter-knopf seiten-chip" data-band-aktion="seiteFilter" data-seite="${seite}" data-item="${htmlSicher(item)}"
-        data-zustand="${zustand}" title="${titel}" style="--item-farbe:${itemInfo(item).farbe}">${zustand === "nur" ? "✓ " : zustand === "nein" ? "✕ " : ""}${htmlSicher(itemInfo(item).name)}</button>`;
-    }).join("");
-    return `<div class="seiten-zeile${e.gesperrt ? " gesperrt" : ""}">
-        <div class="seiten-kopf"><b>${SEITEN_NAMEN[seite]}</b>${angeschlossen(seite) ? "" : ` <small class="leise">(kein Anschluss)</small>`}
-          <button type="button" class="mini-knopf seiten-schalter" data-band-aktion="seiteSperren" data-seite="${seite}" aria-pressed="${!e.gesperrt}">
-            ${e.gesperrt ? "✕ gesperrt" : "✓ offen"}</button></div>
-        ${e.gesperrt ? "" : `<div class="filter-liste">${chips}</div>`}
-      </div>`;
+    const e = seiteEinstellung(t, seite) || { gesperrt: false, filter: {} }, ui = bandFilterZustand(t, seite);
+    const quelle = typeof bandQuellItems === "function" ? bandQuellItems(t, istVerteiler(t) ? null : seite) : [];
+    const explizit = Object.keys(e.filter), items = [...new Set([...quelle.slice(0, 12), ...explizit])];
+    return `<div class="seiten-zeile${e.gesperrt ? " gesperrt" : ""}" id="band-seite-${seite}">
+      <div class="seiten-kopf"><b>${SEITEN_NAMEN[seite]}</b>${angeschlossen(seite) ? "" : '<small class="leise">(kein Anschluss)</small>'}
+      <button type="button" class="mini-knopf seiten-schalter" data-band-aktion="seiteSperren" data-seite="${seite}" aria-pressed="${!e.gesperrt}">${e.gesperrt ? "✕ gesperrt" : "✓ offen"}</button></div>
+      <p class="info-leer">Vorgeschaltetes Angebot: ${quelle.length} Itemarten${quelle.length > 12 ? ' · erste 12 angezeigt' : ''}. Gespeicherte Filter bleiben sichtbar.</p>
+      <div class="filter-liste">${items.map((item) => bandFilterChip(t, seite, item)).join("") || '<span class="leise">Noch kein Angebot. Ausnahme über die Suche wählen.</span>'}</div>
+      <details class="band-filter-dropdown" data-band-filter-seite="${seite}" ${ui.offen ? "open" : ""}>
+        <summary>Weitere Items / Filterausnahmen suchen</summary>
+        <label for="band-filter-suche-${seite}" class="info-feld">Item suchen (höchstens 25 Treffer)
+          <input id="band-filter-suche-${seite}" type="search" value="${htmlSicher(ui.suche)}" data-band-filter-suche="${seite}" placeholder="Name oder Item-ID" autocomplete="off"></label>
+        <label class="info-feld">Treffer <select size="4" data-band-filter-wahl="${seite}" aria-label="Itemausnahme für ${SEITEN_NAMEN[seite]}">${bandFilterOptionen(t, seite)}</select></label>
+        <button type="button" class="lz-knopf" data-band-aktion="filterAusnahme" data-seite="${seite}" ${ui.item ? "" : "disabled"}>Filter für gewähltes Item umschalten</button>
+        <small class="leise">✓ nur diese · ✕ nie · erneuter Klick entfernt den Filter. Suche, Pfeiltasten und Eingabetaste sind bedienbar.</small>
+      </details></div>`;
   }).join("");
-  const text = t.typ === "smartVerteiler"
-    ? "Items gehen reihum an die offenen Ausgänge, aber nur, wenn das Ziel am Ende der Strecke noch Platz (und Max) für genau dieses Item hat. Sonst hält er an. ✓ = nur diese Items, ✕ = nie."
-    : t.typ === "ventil"
-    ? "Items gehen geradeaus. Nur wenn vorn kein Platz ist, gehen sie zur Seite (reihum). ✓ = nur diese Items, ✕ = nie."
-    : istVerteiler(t)
-    ? "Items gehen reihum an die offenen Ausgänge. ✓ = nur diese Items; ein Ausgang ohne ✓ nimmt alles andere. ✕ = nie."
-    : "Items kommen reihum von den offenen Seiten. ✓ = nur diese Items annehmen, ✕ = diese Items nicht annehmen.";
-  return `<div class="info-block"><h3>${istVerteiler(t) ? "Ausgänge" : "Eingänge"}</h3><p class="modus-text">${text}</p>${zeilen}</div>`;
+  const text = t.typ === "smartVerteiler" ? "Reihum an offene Ausgänge mit Platz am Streckenziel. Sonst hält das Item an."
+    : t.typ === "ventil" ? "Geradeaus; nur bei vollem Ziel reihum zur Seite."
+    : istVerteiler(t) ? "Reihum an offene Ausgänge; ohne ✓ nimmt ein Ausgang alle anderen Items."
+    : "Reihum von offenen Eingängen; optional erhält eine Seite Vorrang.";
+  return `<div class="info-block" id="band-seiten"><h3>${istVerteiler(t) ? "Ausgänge" : "Eingänge"}</h3><p class="modus-text">${text} ✓ = nur diese, ✕ = nie.</p>${zeilen}</div>`;
+}
+// Bestand ist ausschließlich die physisch in diesem Bauteil liegende Ware, keine Quellprognose.
+function bandInventarHtml(t) {
+  const inv = typeof bandInventar === "function" ? bandInventar(t) : { bestand: {}, anzahl: 0, kapazitaet: 25 };
+  const zeilen = Object.entries(inv.bestand).filter(([, n]) => n > 0).map(([item, n]) => `<div class="band-inventar-zeile"><span>${htmlSicher(itemInfo(item).name)} <b>× ${n}</b></span>
+    <button type="button" class="mini-knopf" data-band-aktion="inventarEins" data-item="${htmlSicher(item)}" title="Eine Einheit endgültig löschen" aria-label="Eine Einheit ${htmlSicher(itemInfo(item).name)} löschen">✕ 1</button>
+    <button type="button" class="mini-knopf bau-gefahr" data-band-aktion="inventarAlle" data-item="${htmlSicher(item)}">Alle ${n} löschen …</button></div>`).join("");
+  return `<div class="info-block"><h3>Inventar dieses Bauteils: ${inv.anzahl} / ${inv.kapazitaet}</h3><p class="info-leer">✕ 1 löscht genau eine Einheit. Die zweite Aktion fragt vor dem Löschen aller Einheiten nach.</p>${zeilen || '<p class="info-leer">Leer</p>'}</div>`;
 }
 function zeichneBandInfo() {
   const t = spiel.baender.get(auswahlBandId);
@@ -20975,7 +21330,7 @@ function zeichneBandInfo() {
   const seg = gruppe ? segAlle : null;
   ob.infoTitel.textContent = gruppe ? `${t.name} · Bandgruppe` : segAlle ? `${typ.name} · ${t.name}` : typ.name;
   ob.infoUnter.textContent = gruppe ? `${segAlle.teile.length} Bandstücke bis zum nächsten besonderen Teil (Splitter, Zusammenführung, Greifarm, Gebäude).` : typ.beschreibung;
-  let html = "";
+  let html = `<div id="band-inventar">${bandInventarHtml(t)}</div>`;
   if (!gruppe && segAlle) {
     html += `<p class="modus-text">Einzelnes Stück. <b>Doppelklick</b> wählt die ganze Bandgruppe (Tempo, Name, Gruppe abreißen).</p>`;
   }
@@ -21008,11 +21363,11 @@ function zeichneBandInfo() {
   }
   if (segAlle && istErforscht("HR-009")) html += overseerHtml(t);   // Phase 7d: Fließband-Overseer (HR-009)
   if (istVerteiler(t)) {
-    html += `<div id="band-puffer">${pufferHtml(t)}</div>`;   // Phase 7b Nachtrag: Puffer oben, live aufgefrischt
+    // Einheitliches Inventar steht für alle Bauteile oben.   // Phase 7b Nachtrag: Puffer oben, live aufgefrischt
     html += seitenHtml(t);                          // Phase 7a: Seiten und Filter
-  } else if (t.typ === "zusammen") {
+  } else if (["zusammen", "smartZusammen", "omniMerger"].includes(t.typ)) {
     html += `<label class="info-feld">Vorrang <select data-band-aktion="vorrang">
-        ${[["", "– reihum –"], ["links", "links"], ["hinten", "hinten"], ["rechts", "rechts"]].map(([wert, text]) =>
+        ${[["", "– reihum –"], ["links", "links"], ["hinten", "hinten"], ["rechts", "rechts"], ...(t.typ === "omniMerger" ? [["vorn", "vorn"]] : [])].map(([wert, text]) =>
           `<option value="${wert}" ${(t.vorrang || "") === wert ? "selected" : ""}>${text}</option>`).join("")}
       </select></label>`;
     html += seitenHtml(t);
@@ -21053,6 +21408,14 @@ function aktualisiereBandInfoZahlen() {
   if (!ziel || !t) return;
   if (performance.now() < infoKlickSperre) return;
   setzeHtml(ziel, bandInfoZahlenHtml(t));
+  const inventar = $("band-inventar");
+  if (inventar) morphe(inventar, bandInventarHtml(t));
+  const seiten = $("band-seiten");
+  if (seiten) {
+    const vorlage = document.createElement("template");
+    vorlage.innerHTML = seitenHtml(t);
+    morphe(seiten, vorlage.content.firstElementChild.innerHTML);
+  }
   const puffer = $("band-puffer");                  // Phase 7b Nachtrag: Verteiler-Puffer live
   if (puffer) setzeHtml(puffer, pufferHtml(t));
 }
@@ -21064,7 +21427,7 @@ function bandInfoZahlenHtml(t) {
     const kask = info.stau ? kaskadeVon(seg.teile[seg.teile.length - 1]) : null;   // W1 (M4)
     html += `<div class="info-block"><h3>Segment</h3><dl class="info-zeilen zwei">
       <dt>Länge</dt><dd>${info.laenge} Kacheln</dd>
-      <dt>Items darauf</dt><dd>${info.items}</dd>
+      <dt>Items im Segment</dt><dd>${seg.teile.reduce((summe, teil) => summe + bandInventar(teil).anzahl, 0)}</dd>
       <dt>Durchsatz</dt><dd>${Number.isFinite(segmentDurchsatz(seg)) ? `bis ${segmentDurchsatz(seg)} Items/min` : "unbegrenzt"}</dd>
       <dt>Von</dt><dd>${htmlSicher(info.von)}</dd>
       <dt>Nach</dt><dd>${htmlSicher(info.nach)}</dd>
@@ -21096,7 +21459,7 @@ function bandInfoZahlenHtml(t) {
       ${q && z && q.art === "gebaeude" && typVon(q.g).art === "hauptlager" && z.art === "band" && !t.armFilter ? `<p class="info-warnung">⚠ Vom Hauptlager auf ein Band nur mit Item-Filter.</p>` : ""}
       ${t.wartet > 3 ? `<p class="info-warnung">⚠ Das Ziel nimmt gerade nichts an.</p>` : ""}</div>`;
   } else {
-    const items = (t.items ? t.items.length : 0) + pufferVon(t).length;   // Phase 7b Nachtrag: Verteiler-Puffer
+    const items = bandInventar(t).anzahl;   // AP01: sichtbare Ware und Reserve gemeinsam zählen.
     const anschluesse = istVerteiler(t) ? t.ausgaenge.map((a) => SEITEN_NAMEN[a.seite]).join(", ") || "keine" : null;
     html += `<div class="info-block"><dl class="info-zeilen zwei"><dt>Items darin</dt><dd>${items}</dd>
       ${anschluesse !== null ? `<dt>Ausgänge</dt><dd>${anschluesse}</dd>` : ""}
@@ -21156,6 +21519,25 @@ ob.infoInhalt.addEventListener("click", (e) => {
     }
     case "ablauf": setzeBandEinstellung(knopf.dataset.teil, "ablaufFilter", knopf.dataset.item); break;
     case "seiteSperren": setzeBandEinstellung(t.id, "seiteSperren", knopf.dataset.seite); break;          // Phase 7a
+    case "inventarEins": {
+      const r = loescheBandInventar(t.id, knopf.dataset.item, 1);
+      if (!r.ok) zeigeMeldung(r.grund || "Keine Einheit mehr vorhanden.", true);
+      break;
+    }
+    case "inventarAlle": {
+      const item = knopf.dataset.item, id = t.id, n = bandInventar(t).bestand[item] || 0;
+      frage({ titel: "Alle Einheiten dieses Items löschen?", text: `${n} × ${itemInfo(item).name} werden endgültig aus diesem Bauteil entfernt.`, ok: `Alle ${n} löschen` }, () => {
+        const r = loescheBandInventar(id, item, n);
+        zeigeMeldung(r.ok ? `${r.menge} Einheiten gelöscht.` : r.grund || "Löschen nicht möglich.", !r.ok);
+        if (auswahlBandId === id && spiel.baender.has(id)) zeichneBandInfo();
+      });
+      return;
+    }
+    case "filterAusnahme": {
+      const ui = bandFilterZustand(t, knopf.dataset.seite);
+      if (ui.item) setzeBandEinstellung(t.id, "seiteFilter", `${knopf.dataset.seite}|${ui.item}`);
+      break;
+    }
     case "seiteFilter": setzeBandEinstellung(t.id, "seiteFilter", `${knopf.dataset.seite}|${knopf.dataset.item}`); break;
     case "gruppe": bandAuswahl.gruppe = true; break;
     case "einzeln": bandAuswahl.gruppe = false; break;
@@ -21208,6 +21590,35 @@ ob.infoInhalt.addEventListener("click", (e) => {
   }
   infoKlickSperre = 0;
   if (spiel.baender.has(auswahlBandId)) { zeichneBandInfo(); bandRahmenNeu(); }   // Knöpfe sofort im neuen Zustand zeigen
+});
+// Suche und Auswahl bleiben auch während der laufenden Bestandsaktualisierung erhalten.
+ob.infoInhalt.addEventListener("toggle", (e) => {
+  const t = spiel.baender.get(auswahlBandId), seite = e.target.dataset?.bandFilterSeite;
+  if (t && seite) bandFilterZustand(t, seite).offen = e.target.open;
+}, true);
+ob.infoInhalt.addEventListener("input", (e) => {
+  const t = spiel.baender.get(auswahlBandId), seite = e.target.dataset.bandFilterSuche;
+  if (!t || !seite) return;
+  const ui = bandFilterZustand(t, seite); ui.suche = e.target.value;
+  const bereich = e.target.closest("details"), auswahl = bereich.querySelector("select");
+  setzeHtml(auswahl, bandFilterOptionen(t, seite));
+  bereich.querySelector("button").disabled = !ui.item;
+});
+ob.infoInhalt.addEventListener("change", (e) => {
+  const t = spiel.baender.get(auswahlBandId), seite = e.target.dataset.bandFilterWahl;
+  if (t && seite) bandFilterZustand(t, seite).item = e.target.value;
+});
+ob.infoInhalt.addEventListener("keydown", (e) => {
+  const feld = e.target, seite = feld.dataset.bandFilterSuche || feld.dataset.bandFilterWahl;
+  if (!seite) return;
+  e.stopPropagation();
+  const t = spiel.baender.get(auswahlBandId); if (!t) return;
+  const ui = bandFilterZustand(t, seite), bereich = feld.closest("details");
+  if (e.key === "ArrowDown" && feld.dataset.bandFilterSuche) { e.preventDefault(); bereich.querySelector("select").focus(); }
+  else if (e.key === "Enter") { e.preventDefault(); bereich.querySelector("button").click(); }
+  else if (e.key === "Escape") {
+    e.preventDefault(); ui.offen = false; bereich.open = false; bereich.querySelector("summary").focus();
+  }
 });
 ob.infoInhalt.addEventListener("change", (e) => {
   const feld = e.target;
@@ -22223,9 +22634,10 @@ function planeEinfuegen(k, drehung) {
   if (!gruende.length) {
     const gesperrt = [...gebaeude.flatMap((p) => p.geo.zellen),
       ...baender.filter((p) => { const info = bandTypNach.get(p.typ); return !info.begehbar && !info.hoch; }).map((p) => ({ x: p.x, z: p.z }))];
-    // Phase 7b Nachtrag: ein Lager, dessen Zugang die Kopie selbst zubaut, braucht keinen erreichbaren Zugang
-    const neueZugaenge = gebaeude.filter((p) => !istLagerTyp(gebaeudeTypNach.get(p.typ))
-      || !gesperrt.some((c) => c.x === p.geo.zugang.x && c.z === p.geo.zugang.z)).map((p) => p.geo.zugang);
+    // Alle neuen Pfeile müssen auch innerhalb einer Mehrfachkopie frei bleiben.
+    const neueZugaenge = gebaeude.map((p) => p.geo.zugang);
+    const alleBelegten = [...gebaeude.flatMap((p) => p.geo.zellen), ...baender.map((p) => ({ x: p.x, z: p.z }))];
+    if (neueZugaenge.some((z) => alleBelegten.some((c) => c.x === z.x && c.z === z.z))) gruende.push("Die Kopie würde einen Arbeitszugang (Pfeil) überbauen.");
     if (!bleibtErreichbarMit(gesperrt, neueZugaenge)) gruende.push("Das würde jemanden einsperren oder einen Zugang abschneiden.");
   }
   // Kosten: wie beim normalen Bauen zuerst aus dem Depot, sonst kaufen
@@ -22355,6 +22767,155 @@ function aktualisiereEinfuegeVorschau(aktiv) {
   einfuege3d.visible = true;
 }
 
+
+/* --- AP01: Bestehende Produktionsobjekte direkt ziehen ---
+   Bis zum gültigen Loslassen bleibt das Original unverändert. Kurze Klicks,
+   Strg-Auswahl, Rahmen auf freien Flächen und Mitarbeiterziehen bleiben erhalten. */
+let objektZug = null;
+function objektZiehenStart(e) {
+  if (e.ctrlKey || e.metaKey || e.shiftKey || verknuepfModus || bau.werkzeug || mehrfachAktiv()) return false;
+  const k = kachelUnterMaus(e.clientX, e.clientY);
+  const g = gebaeudeUnter(k), t = !g && bandteilAufKachel(k);
+  if (!g && !t) return false;
+  objektZug = { art: g ? "gebaeude" : "band", id: (g || t).id, start: k,
+    pixelX: e.clientX, pixelY: e.clientY, pointerId: e.pointerId, aktiv: false, plan: null };
+  return true;
+}
+// Brücken und verbundene Untergrundportale werden immer zusammen verschoben.
+function bandVersatzGruppe(t) {
+  if (t.bruecke) return brueckeVon(t);
+  if (t.typ === "untergrundEin") {
+    const partner = untergrundPartner(t);
+    return partner ? [t, partner] : [t];
+  }
+  if (t.typ === "untergrundAus") {
+    const partner = [...spiel.baender.values()].find((b) => b.typ === "untergrundEin" && untergrundPartner(b)?.id === t.id);
+    return partner ? [partner, t] : [t];
+  }
+  return [t];
+}
+function pruefeBandVersatz(t, x, z) {
+  const gruppe = bandVersatzGruppe(t), dx = x - t.x, dz = z - t.z;
+  const teile = gruppe.map((b) => ({ teil: b, typ: b.typ, x: b.x + dx, z: b.z + dz, richtung: b.richtung }));
+  if (!dx && !dz) return { passt: true, gruende: [], teile };
+  const ignorierteIds = gruppe.map((b) => b.id);
+  const freigegeben = gruppe.filter((b) => !bandTyp(b).hoch).map((b) => ({ x: b.x, z: b.z }));
+  const gesperrt = teile.filter((p) => !bandTyp(p.teil).hoch && !bandTyp(p.teil).begehbar).map((p) => ({ x: p.x, z: p.z }));
+  const gruende = [];
+  for (const p of teile) {
+    const r = pruefeBandteil(p.typ, p.x, p.z, p.richtung, { ignorierteIds, freigegeben, gesperrt });
+    if (!r.passt) gruende.push(...r.gruende);
+  }
+  // Der gemeinsam verschobene Tunnel muss an seinem ursprünglichen Partner enden.
+  if (gruppe.length === 2 && gruppe.some((b) => b.typ === "untergrundEin")) {
+    const ein = teile.find((p) => p.typ === "untergrundEin"), aus = teile.find((p) => p.typ === "untergrundAus");
+    const r = RICHTUNGEN[ein.richtung];
+    for (let d = 1; d <= BAENDER.untergrundReichweite + 1; d++) {
+      const px = ein.x + r.x * d, pz = ein.z + r.z * d;
+      if (px === aus.x && pz === aus.z) break;
+      const fremd = bandteilAn(px, pz, 0);
+      if (fremd && !ignorierteIds.includes(fremd.id) && fremd.richtung === ein.richtung && ["untergrundEin", "untergrundAus"].includes(fremd.typ)) {
+        gruende.push("Hier würde der Tunnel mit einer anderen Untergrundstrecke verbunden. Bitte einen freien Platz wählen.");
+        break;
+      }
+    }
+  }
+  return { passt: !gruende.length, gruende: [...new Set(gruende)], teile };
+}
+function verschiebeBandteil(id, x, z) {
+  const t = spiel.baender.get(id);
+  if (!t) return { ok: false, gruende: ["Dieses Bandteil gibt es nicht mehr."] };
+  const r = pruefeBandVersatz(t, x, z);
+  if (!r.passt) return { ok: false, gruende: r.gruende };
+  if (t.x === x && t.z === z) return { ok: true, teil: t, anzahl: r.teile.length };
+  // Erst vollständig prüfen, dann alle Quellen lösen und alle Ziele belegen.
+  // Dieselben Datenobjekte bewahren IDs, Richtungen, Ware, Puffer und Einstellungen.
+  const geaendert = new Map();
+  const merke = (x, z) => geaendert.set(x + "," + z, { x, z, kachel: holeKachel(x, z) });
+  for (const p of r.teile) {
+    const b = p.teil, quelle = holeKachel(b.x, b.z);
+    merke(b.x, b.z);
+    if (bandTyp(b).hoch) quelle.hochband = null;
+    else { quelle.band = null; quelle.begehbar = !quelle.objekt; quelle.kosten = 1; }
+  }
+  for (const p of r.teile) {
+    const b = p.teil, ziel = holeKachel(p.x, p.z);
+    Object.assign(b, { x: p.x, z: p.z });
+    if (bandTyp(b).hoch) ziel.hochband = b.id;
+    else { ziel.band = b.id; ziel.begehbar = !!bandTyp(b).begehbar; ziel.kosten = bandTyp(b).laufKosten || 1; }
+    merke(p.x, p.z);
+  }
+  markiereBaender();
+  for (const e of geaendert.values()) meldeEreignis("rasterGeaendert", e);
+  planeLaufendeNeu(); meldeStruktur();
+  return { ok: true, teil: t, anzahl: r.teile.length };
+}
+function objektZiehenBewegt(e) {
+  const z = objektZug;
+  if (!z || e.pointerId !== z.pointerId) return false;
+  if (!z.aktiv && Math.hypot(e.clientX - z.pixelX, e.clientY - z.pixelY) <= GRAFIK.klickToleranz) return true;
+  z.aktiv = true;
+  maus.rahmenMoeglich = false;
+  const k = kachelUnterMaus(e.clientX, e.clientY);
+  setzeHover(k);
+  if (!k) { z.plan = null; zeigeBauVorschau(null); zeigeBandVorschau(null); return true; }
+  const objekt = z.art === "gebaeude" ? spiel.gebaeude.get(z.id) : spiel.baender.get(z.id);
+  if (!objekt) { objektZiehenAbbruch(); return true; }
+  const x = objekt.x + k.x - z.start.x, zz = objekt.z + k.z - z.start.z;
+  const r = z.art === "gebaeude" ? passtGebaeude(objekt.typ, x, zz, objekt.drehung, objekt.id) : pruefeBandVersatz(objekt, x, zz);
+  z.plan = { x, z: zz, ...r };
+  if (z.art === "gebaeude") zeigeBauVorschau({ typ: objekt.typ, drehung: objekt.drehung, geo: r.geo, passt: r.passt });
+  else zeigeBandVorschau(r.teile.map((p) => ({ ...p, passt: r.passt })));
+  zeichenflaeche.style.cursor = r.passt ? "grabbing" : "not-allowed";
+  return true;
+}
+function objektZiehenEnde(e) {
+  const z = objektZug;
+  if (!z || e.pointerId !== z.pointerId) return false;
+  if (!z.aktiv) { objektZug = null; return false; }
+  objektZiehenBewegt(e); // Endposition und aktuelle Belegung nochmals prüfen.
+  const plan = z.plan;
+  const g = z.art === "gebaeude" && spiel.gebaeude.get(z.id);
+  const r = !plan || !plan.passt ? { ok: false, gruende: plan?.gruende || ["Bitte innerhalb der Halle loslassen."] }
+    : g ? (g.x === plan.x && g.z === plan.z ? { ok: true } : verschiebeGebaeude(g.id, plan.x, plan.z, g.drehung))
+      : verschiebeBandteil(z.id, plan.x, plan.z);
+  objektZiehenAbbruch();
+  if (!r.ok) zeigeMeldung("Verschieben abgebrochen: " + r.gruende[0], true);
+  else {
+    if (g) { waehleGebaeude(g.id); zeigeGebaeudeAuswahl(g); }
+    else waehleBandteil(z.id);
+    zeigeMeldung((r.anzahl > 1 ? r.anzahl + " verbundene Bandteile" : "Objekt") + " verschoben. Inhalt und Einstellungen bleiben erhalten.");
+  }
+  return true;
+}
+function objektZiehenAbbruch() {
+  if (!objektZug) return;
+  objektZug = null;
+  zeigeBauVorschau(null); zeigeBandVorschau(null);
+  zeichenflaeche.style.cursor = "";
+  maus.linksUnten = false; maus.rahmenMoeglich = false;
+}
+function breche3dGestenAb() {
+  objektZiehenAbbruch();
+  maus.linksUnten = false; maus.verschiebt = false; maus.ankerPunkt = null;
+  if (maus.zieht) { maus.zieht = false; ziehen("abbruch", null, false); }
+  if (maus.ziehtPerson) { maus.ziehtPerson = false; personZiehenAbbruch(); }
+  if (maus.rahmen) rahmenAbbruch();
+  maus.rahmen = false; maus.rahmenMoeglich = false;
+  setzeHover(null);
+}
+zeichenflaeche.addEventListener("pointercancel", breche3dGestenAb);
+zeichenflaeche.addEventListener("lostpointercapture", () => {
+  if (objektZug || maus.zieht || maus.ziehtPerson || maus.rahmen || maus.verschiebt) breche3dGestenAb();
+});
+window.addEventListener("blur", breche3dGestenAb);
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && objektZug) {
+    e.preventDefault(); e.stopImmediatePropagation(); breche3dGestenAb();
+    zeigeMeldung("Verschieben abgebrochen.");
+  }
+}, true);
+
 /* ============================================================================
    ABSCHNITT 10: Spielschleife (Render-Loop)                        [3D-Agent]
    Wird ca. 60-mal pro Sekunde aufgerufen: bewegt, animiert und zeichnet neu.
@@ -22479,7 +23040,7 @@ window.tradeUp = {
   ZONEN, setzeBestellung, setzeExportModus, setzeExportWare, exportBedarf, exportModusVon, holeExportAb, inExportzone,
   zonenListe, stehtAnWand, zoneAktiv, wagenUnterwegs, baukosten, gebaeudeName, stelleZoneAuf,
   // Phase 7b Nachtrag (Logik): Verteiler-Puffer, Hauptlager-Regeln, Zugang überall, Exportzone an der Wand
-  PUFFER_GROESSE, pufferVon, hlNimmtAn, hlGibtAb, hlAufnahme, keinLagerFuer, zugangGesperrt, istLagerTyp,
+  PUFFER_GROESSE, pufferVon, bandInventar, bandQuellItems, loescheBandInventar, hlNimmtAn, hlGibtAb, hlAufnahme, keinLagerFuer, zugangGesperrt, istLagerTyp,
   wandRichtung, setzeAnWand, hlEntnimm, hlEinlagern,
   // Phase 7c: Komponenten-Katalog, Gehäuse, Produktklassen nach Kategorien, Freischaltung
   KOMPONENTEN, KATEGORIEN, GEHAEUSE, ALTE_BAUTEILE, ROHSTOFFE, ITEMS, ENDPRODUKTE, pruefeDatenbank,
@@ -22493,6 +23054,7 @@ window.tradeUp = {
   GIGAFACTORY, istMaschine, laeuftOhnePersonal, maschinenTempo, maschineKann, maschinenRezepte, maschinenLaufkosten,
   aktualisiereAutomatik, lagerNimmtWare, siloWareVon, setzeSiloWare, smartNachkaufBedarf, smartNachkaufSchritt,
   setzeSmartNachkauf, naechsteImportzone, hatPuffer, untergrundPartner, planeUntergrund, baueUntergrund,
+  arbeitsZugangBei, pruefeAlteZugaenge, bandVersatzGruppe, pruefeBandVersatz, verschiebeBandteil, breche3dGestenAb,
   taktFrei, segmentDurchsatz, tempoStufe, tempoFreigeschaltet, warnleuchtenAktiv, wareFalschGeroutet,
   ioGatesAktiv, ueberschussPreis,
   // Phase 7d: neue Forschung (drei Bäume, Zeitprojekte, Firmen-XP, Bauforschung, Sperren, Wirkungen)
