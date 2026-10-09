@@ -3098,9 +3098,30 @@
   .filter-knopf.seiten-chip[data-band-aktion="seiteFilter"][data-zustand="nein"] {
     background: #522c35; color: #ffe0e4; border-color: #e67787;
   }
-  .band-inventar-zeile { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--hud-linie); }
-  .band-inventar-zeile > span { flex: 1 1 100%; }
-  </style>
+  .band-inventar-tabelle { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.7rem; }
+  .band-inventar-tabelle th { text-align: left; color: var(--hud-leise); font-size: 0.65rem; }
+  .band-inventar-tabelle th, .band-inventar-tabelle td { padding: 6px 3px; border-bottom: 1px solid var(--hud-linie); vertical-align: top; overflow-wrap: anywhere; }
+  .band-inventar-tabelle th:nth-child(1) { width: 31%; }
+  .band-inventar-tabelle th:nth-child(2) { width: 10%; }
+  .band-inventar-tabelle th:nth-child(3) { width: 12%; }
+  .band-inventar-tabelle th:nth-child(4) { width: 34%; }
+  .band-inventar-tabelle th:nth-child(5) { width: 13%; }
+  .band-inventar-betrag { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .band-inventar-betrag input { width: 44px; min-width: 0; padding: 4px; box-sizing: border-box; background: var(--lz-fenster); color: var(--hud-text); border: 1px solid var(--hud-linie); border-radius: 6px; font: inherit; }
+  .band-inventar-betrag input[aria-invalid="true"] { border-color: var(--hud-rot); }
+  .band-inventar-fehler { display: block; color: #ffc3c9; font-size: 0.65rem; padding-top: 4px; }
+  .band-inventar-tabelle .mini-knopf { padding: 4px 5px; font-size: 0.65rem; }
+  
+/* Reihenfolge der automatischen Lagerausgabe */
+.lager-sort-griff { display: inline-block; padding: 6px 5px; margin-right: 3px; cursor: grab; color: var(--text-leise, #91a8a0); user-select: none; }
+.lager-sort-griff:active { cursor: grabbing; }
+.lager-sort-knoepfe { display: inline-flex; gap: 2px; margin-right: 5px; }
+.lager-sort-knoepfe .mini-knopf { padding: 2px 5px; }
+.lager-ausgabe-tabelle tr.lager-sort-zieht { opacity: .45; }
+.lager-ausgabe-tabelle tr.lager-sort-davor > td { box-shadow: inset 0 3px #69d3b0; }
+.lager-ausgabe-tabelle tr.lager-sort-dahinter > td { box-shadow: inset 0 -3px #69d3b0; }
+.lager-sort-hinweis { line-height: 1.45; }
+</style>
 </head>
 <body>
 
@@ -8310,6 +8331,54 @@ function typVon(g) { return gebaeudeTypNach.get(g.typ); }
 function istStation(g) { return typVon(g).kategorie === "station" || typVon(g).kategorie === "maschine"; }   // Phase 7d: Maschinen sind Stationen
 function istZwischenlager(g) { return typVon(g).art === "zwischenlager"; }
 function istHauptlager(g) { return typVon(g).art === "hauptlager"; }   // Phase 7b Nachtrag
+// Die Warenreihenfolge gilt nur für die automatische Ausgabe dieses Lagers.
+// Kuriere und verknüpfte Arbeiter behalten ihre konkreten Material-/Auftragsanforderungen.
+function normalisiereLagerAusgabeReihenfolge(ids) {
+  return [...new Set((Array.isArray(ids) ? ids : []).filter((id) => typeof id === "string" && id.length > 0))];
+}
+function hatLagerAusgabeReihenfolge(g) {
+  return !!g && (istHauptlager(g) || istZwischenlager(g));
+}
+function lagerAusgabeSichtbareItems(g) {
+  return istHauptlager(g) ? hauptlagerRegelIds(g) : regelZeilenIds(g);
+}
+function lagerAusgabeItems(g, ids) {
+  if (!hatLagerAusgabeReihenfolge(g)) return [...ids];
+  const reihenfolge = normalisiereLagerAusgabeReihenfolge(g.lagerAusgabeReihenfolge);
+  const bekannt = new Set(reihenfolge);
+  // Neu eingelagerte oder konfigurierte Ware kommt ans Ende. Leere gespeicherte
+  // Positionen bleiben erhalten, damit spätere Lieferungen dieselbe Priorität haben.
+  for (const item of [...Object.keys(g.bestand || {}), ...Object.keys(g.regeln || {}), ...ids]) {
+    if (!bekannt.has(item)) { reihenfolge.push(item); bekannt.add(item); }
+  }
+  g.lagerAusgabeReihenfolge = reihenfolge;
+  const erlaubt = new Set(ids);
+  return reihenfolge.filter((item) => erlaubt.has(item));
+}
+function verschiebeLagerAusgabe(id, item, zielItem, dahinter = false) {
+  const g = spiel.gebaeude.get(id);
+  if (!hatLagerAusgabeReihenfolge(g) || item === zielItem) return false;
+  const sichtbar = lagerAusgabeSichtbareItems(g);
+  const reihenfolge = lagerAusgabeItems(g, sichtbar);
+  if (!reihenfolge.includes(item) || !reihenfolge.includes(zielItem)) return false;
+  const alle = g.lagerAusgabeReihenfolge.filter((i) => i !== item);
+  const zielIndex = alle.indexOf(zielItem) + (dahinter ? 1 : 0);
+  alle.splice(zielIndex, 0, item);
+  if (alle.every((id, i) => id === g.lagerAusgabeReihenfolge[i])) return false;
+  g.lagerAusgabeReihenfolge = alle;
+  g.lagerAusgabePrioritaetAktiv = true;
+  g.version++;
+  meldeStruktur();
+  return true;
+}
+function verschiebeLagerAusgabePosition(id, item, delta) {
+  const g = spiel.gebaeude.get(id);
+  if (!hatLagerAusgabeReihenfolge(g)) return false;
+  const ids = lagerAusgabeSichtbareItems(g);
+  const sichtbar = lagerAusgabeItems(g, ids), i = sichtbar.indexOf(item), ziel = i + Math.sign(delta);
+  return i >= 0 && ziel >= 0 && ziel < sichtbar.length && verschiebeLagerAusgabe(id, item, sichtbar[ziel], delta > 0);
+}
+
 function kapazitaetVon(g) { return typVon(g).kapazitaet; }
 /* --- Phase 7d: Maschinen (Konzept 4.4) ---
    Eine Maschine ist eine Station ohne Arbeiter, die immer automatisch läuft (s.automatik, Abschnitt 11i):
@@ -8705,6 +8774,8 @@ function stelleGebaeudeAuf(typ, x, z, drehung, extra = {}) {
     modus: STANDARD_LAGER_MODUS,   // Phase 7a: immer "Gemischt" (alte Spielstände mit Eingang/Ausgang werden umgestellt)
     // Phase 5b: von Hand gesetzte Pfeile/Mengen (ältere Spielstände: aus "fixiert" umgewandelt)
     regeln: extra.regeln ? JSON.parse(JSON.stringify(extra.regeln)) : regelnAusFixierung(extra.modus, extra.fixiert),
+    lagerAusgabeReihenfolge: normalisiereLagerAusgabeReihenfolge(extra.lagerAusgabeReihenfolge),
+    lagerAusgabePrioritaetAktiv: extra.lagerAusgabePrioritaetAktiv === true,
     eingang: { ...(extra.eingang || {}) },                                 // Phase 5b: Eingangsfach (nur Stationen)
     rueckgabe: false,                                                      // Phase 5: Überschuss wird zurückgeschickt
     vernichtet: extra.vernichtet || 0,                                     // Phase 7b: Mülltonne
@@ -10598,6 +10669,8 @@ function halleBereinigen() {
       importVon: g.importVon.map((id) => nummer.get(id)).filter((i) => i !== undefined),     // Phase 7a (Nachtrag 2)
       exportNach: g.exportNach.map((id) => nummer.get(id)).filter((i) => i !== undefined),
       arbeiter: g.arbeiterId, modus: g.modus, regeln: JSON.parse(JSON.stringify(g.regeln)),
+      lagerAusgabeReihenfolge: [...(g.lagerAusgabeReihenfolge || [])],
+      lagerAusgabePrioritaetAktiv: g.lagerAusgabePrioritaetAktiv === true,
     })),
     baender: [...spiel.baender.values()].map((t) => ({ ...bandteilDaten(t), items: [], reserve: [], puffer: hatPuffer(t) ? [] : undefined, pufferFlags: hatPuffer(t) ? [] : undefined, haelt: null, haeltFlags: null })),   // Aufbau-Schnappschuss enthält keine bereits ins Depot gebuchte Ware.
   };
@@ -10645,6 +10718,8 @@ function stelleAufbauWiederHer() {
     ergebnis.gebaeude.rezept = e.rezept;
     ergebnis.gebaeude.pausiert = e.pausiert;
     ergebnis.gebaeude.regeln = e.regeln ? JSON.parse(JSON.stringify(e.regeln)) : regelnAusFixierung(e.modus, e.fixiert);
+    ergebnis.gebaeude.lagerAusgabeReihenfolge = normalisiereLagerAusgabeReihenfolge(e.lagerAusgabeReihenfolge);
+    ergebnis.gebaeude.lagerAusgabePrioritaetAktiv = e.lagerAusgabePrioritaetAktiv === true;
   }
   schnappschuss.gebaeude.forEach((e, i) => {
     if (!neueIds[i]) return;
@@ -10691,6 +10766,8 @@ function spielstandDaten() {
       bestand: g.bestand, verknuepft: g.verknuepft, rezept: g.rezept, pausiert: g.pausiert,
       importVon: g.importVon, exportNach: g.exportNach,   // Phase 7a (Nachtrag 2)
       modus: g.modus, regeln: g.regeln,
+      lagerAusgabeReihenfolge: [...(g.lagerAusgabeReihenfolge || [])],
+      lagerAusgabePrioritaetAktiv: g.lagerAusgabePrioritaetAktiv === true,
       // Phase 7b: Mülltonne, Import-/Exportzone
       vernichtet: g.vernichtet || undefined, bestellungen: g.bestellungen, lieferwagen: g.lieferwagen,
       siloWare: g.siloWare || undefined, nachkauf: g.nachkauf === false ? false : undefined,   // Phase 7d (optional)
@@ -13999,24 +14076,20 @@ function vomBandVersorgt(s, item) {
   return !!s.bandZulauf && !!s.bandVersorgt && spiel.zeit - (s.bandVersorgt[item] ?? -Infinity) < BAENDER.bandVersorgtSek;
 }
 // Was gibt ein Gebäude an einen Ablauf ab? Rückgabe: Item (schon entnommen) oder null.
-//   Station: Erzeugnisse aus dem Ausgabefach; Zwischenlager: Export-Ware (wie für Kuriere);
-//   Hauptlager: nur die Items im Ausgabe-Filter, reihum.
+// Lager nehmen zuerst die oberste freigegebene, verfügbare Ware ihrer Inventarliste.
+// Ausgabe-Filter und Reservierungen bleiben bindend; Stationen und Importzonen behalten ihre Auswahl.
 function gebaeudeGibAb(g, t) {
   const filter = t.ablaufFilter && t.ablaufFilter.length ? t.ablaufFilter : null;
   const art = typVon(g).art;
   let item = null;
   if (istStation(g)) {
     item = Object.keys(g.bestand).find((i) => g.bestand[i] > 0 && (!filter || filter.includes(i))) || null;
-  } else if (istZwischenlager(g) || istImportzone(g)) {   // Phase 7b: die Importzone gibt alles ab
+  } else if (istZwischenlager(g) || istImportzone(g)) {
     const ab = abholbar(g, reservierungen());
-    item = Object.keys(ab).find((i) => !filter || filter.includes(i)) || null;
-  } else if (art === "hauptlager" && filter) {
+    item = lagerAusgabeItems(g, Object.keys(ab)).find((i) => !filter || filter.includes(i)) || null;
+  } else if (art === "hauptlager" && (filter || g.lagerAusgabePrioritaetAktiv === true)) {
     const res = reservierungen();
-    for (let i = 0; i < filter.length; i++) {
-      const kandidat = filter[((t.ablaufIndex || 0) + i) % filter.length];
-      if (hlGibtAb(g, kandidat) && verfuegbar(g, kandidat, res) > 0) { item = kandidat;   // 7b Nachtrag: ⇡ Abgabe
-        t.ablaufIndex = ((t.ablaufIndex || 0) + i + 1) % filter.length; break; }
-    }
+    item = lagerAusgabeItems(g, filter || Object.keys(g.bestand)).find((i) => hlGibtAb(g, i) && verfuegbar(g, i, res) > 0) || null;
   }
   if (item) aendereBestand(g, item, -1);
   return item;
@@ -14176,9 +14249,9 @@ function armKandidaten(g) {
   if (istStation(g)) return Object.keys(g.bestand).filter((i) => g.bestand[i] > 0);
   if (istZwischenlager(g)) {
     const ab = abholbar(g, res);
-    return Object.keys(g.bestand).filter((i) => (ab[i] || 0) > 0 || (darfArbeiterEntnehmen(g, i) && verfuegbar(g, i, res) > 0));
+    return lagerAusgabeItems(g, Object.keys(g.bestand).filter((i) => (ab[i] || 0) > 0 || (darfArbeiterEntnehmen(g, i) && verfuegbar(g, i, res) > 0)));
   }
-  if (typVon(g).art === "hauptlager") return Object.keys(g.bestand).filter((i) => hlGibtAb(g, i) && verfuegbar(g, i, res) > 0);   // 7b Nachtrag: ⇡ Abgabe
+  if (typVon(g).art === "hauptlager") return lagerAusgabeItems(g, Object.keys(g.bestand).filter((i) => hlGibtAb(g, i) && verfuegbar(g, i, res) > 0));   // 7b Nachtrag: ⇡ Abgabe
   if (istImportzone(g)) return Object.keys(g.bestand).filter((i) => verfuegbar(g, i, res) > 0);
   return [];
 }
@@ -14198,8 +14271,8 @@ function armGreife(a, puffern = false) {
     return null;
   }
   const g = quelle.g;
-  // Vom Hauptlager auf ein Band nur mit Filter (sonst würde der Arm das ganze Lager auf das Band legen)
-  if (typVon(g).art === "hauptlager" && ziel.art === "band" && !a.armFilter) return null;
+  // Ohne bewusste Lager-Sortierung bleibt der bisherige Hauptlager-Filterschutz bestehen.
+  if (typVon(g).art === "hauptlager" && ziel.art === "band" && !a.armFilter && g.lagerAusgabePrioritaetAktiv !== true) return null;
   for (const item of armKandidaten(g)) {
     if (!passt(item)) continue;
     aendereBestand(g, item, -1);
@@ -18852,15 +18925,31 @@ function regelTabelle(zeilen, kopf = "Ist / Soll", pfeilNamen = null) {
   return `<table class="regel-tabelle"><thead><tr><th>Ressource</th><th class="zahl">${kopf}</th>
     <th title="${imp}">⇣</th><th title="${exp}">⇡</th><th></th></tr></thead><tbody>${koerper}</tbody></table>`;
 }
+// Inventarzeilen eines Lagers: sichtbare Reihenfolge und automatische Ausgabe stimmen überein.
+function lagerAusgabeZeile(g, z) {
+  const zeile = regelZeile(z), id = htmlSicher(z.item), name = htmlSicher(itemInfo(z.item).name);
+  const ids = lagerAusgabeItems(g, lagerAusgabeSichtbareItems(g));
+  const i = ids.indexOf(z.item);
+  const griff = `<span class="lager-sort-griff" draggable="true" data-lager-sort-griff="${id}" title="${name}: ziehen, um die Ausgabe-Reihenfolge zu ändern" aria-hidden="true">⠿</span>`;
+  const knoepfe = `<span class="lager-sort-knoepfe"><button class="mini-knopf" type="button" data-aktion="lager-ausgabe-hoch" data-item="${id}" aria-label="${name}: früher ausgeben" ${i <= 0 ? "disabled" : ""}>↑</button><button class="mini-knopf" type="button" data-aktion="lager-ausgabe-runter" data-item="${id}" aria-label="${name}: später ausgeben" ${i === ids.length - 1 ? "disabled" : ""}>↓</button></span>`;
+  zeile.html = zeile.html.replace("<tr>", `<tr id="lager-sort-${id}" data-lager-ausgabe-item="${id}">`).replace("<td>", `<td>${griff}${knoepfe}`);
+  return zeile;
+}
+function lagerAusgabeTabelle(g, zeilen, kopf = "Ist / Max", pfeilNamen = ["Import", "Export"]) {
+  const hinweis = `<p class="modus-text lager-sort-hinweis">Ausgabe von oben nach unten: erst eine Warenart aufbrauchen, dann die nächste. Am ⠿ ziehen oder ↑ / ↓ nutzen. Filter und Reservierungen gelten weiter.${istHauptlager(g) ? g.lagerAusgabePrioritaetAktiv === true ? " Ohne Ausgangsfilter werden alle freigegebenen Waren ausgegeben." : " Sortieren aktiviert auch die ungefilterte automatische Ausgabe." : ""}</p>`;
+  if (!zeilen.length) return hinweis + `<p class="info-leer">leer</p>`;
+  const [imp, exp] = pfeilNamen;
+  return hinweis + `<table class="regel-tabelle lager-ausgabe-tabelle" data-lager-ausgabe="${htmlSicher(g.id)}"><thead><tr><th>Produkt / Reihenfolge</th><th class="zahl">${kopf}</th><th title="${imp}">⇣</th><th title="${exp}">⇡</th><th></th></tr></thead><tbody>${zeilen.map((z) => z.html).join("")}</tbody></table>`;
+}
 // Ressourcen-Reiter eines Zwischenlagers
 function lagerZeilen(g) {
   const soll = sollbestand(g);
-  const ids = regelZeilenIds(g);
-  return regelTabelle(ids.map((item) => {
+  const ids = lagerAusgabeItems(g, regelZeilenIds(g));
+  return lagerAusgabeTabelle(g, ids.map((item) => {
     const r = regelVon(g, item);
     const fest = g.regeln[item] && g.regeln[item].soll !== undefined;
     // Phase 7b: Max per Zahl für jede Ware (auch reine Export-Ware: Bänder und Arbeiter liefern nur bis Max)
-    return regelZeile({
+    return lagerAusgabeZeile(g, {
       item, ist: g.bestand[item] || 0, soll: r.imp ? soll[item] || 0 : null, max: fest ? g.regeln[item].soll : null,
       sollAenderbar: true, sollText: "Max",
       imp: r.imp, exp: r.exp, manuell: r.manuell,
@@ -18874,10 +18963,10 @@ function hauptlagerRegelIds(g) {
   return [...new Set([...Object.keys(g.bestand).filter((item) => g.bestand[item] > 0), ...Object.keys(g.regeln || {})])];
 }
 function hauptlagerZeilen(g) {
-  return regelTabelle(hauptlagerRegelIds(g).map((item) => {
+  return lagerAusgabeTabelle(g, lagerAusgabeItems(g, hauptlagerRegelIds(g)).map((item) => {
     const r = regelVon(g, item);
     const fest = !!(g.regeln && g.regeln[item] && g.regeln[item].soll !== undefined);
-    return regelZeile({
+    return lagerAusgabeZeile(g, {
       item, ist: g.bestand[item] || 0, soll: null, max: fest ? g.regeln[item].soll : null, platzhalter: "–",
       sollAenderbar: true, sollText: "Max", imp: r.imp, exp: r.exp, manuell: r.manuell, hauptlager: true,
       notiz: !r.imp && !r.exp ? "gesperrt" : !r.imp ? "keine Annahme" : !r.exp ? "keine Abgabe"
@@ -19163,7 +19252,7 @@ ob.info.addEventListener("pointerdown", (e) => {
 let infoFormSperre = 0;
 function infoFormularAktiv() {
   const a = document.activeElement;
-  return performance.now() < infoFormSperre
+  return !!lagerAusgabeZiehen || performance.now() < infoFormSperre
     || ((a instanceof HTMLInputElement || a instanceof HTMLSelectElement) && ob.info.contains(a));
 }
 
@@ -19277,6 +19366,16 @@ ob.infoInhalt.addEventListener("click", (e) => {
       break;
     }
     case "fo-zeigen": { const id = projektVon(g.id); if (id) zeigeForschungsEintrag(id); return; }
+    case "lager-ausgabe-hoch":
+    case "lager-ausgabe-runter": {
+      const aktion = knopf.dataset.aktion;
+      if (verschiebeLagerAusgabePosition(g.id, item, aktion === "lager-ausgabe-hoch" ? -1 : 1)) {
+        zeigeMeldung(`${itemInfo(item).name}: Ausgabe-Reihenfolge geändert.`);
+        sofortAktualisieren();
+        ob.infoInhalt.querySelector(`[data-aktion="${aktion}"][data-item="${CSS.escape(item)}"]`)?.focus({ preventScroll: true });
+      }
+      return;
+    }
     case "lager": oeffneLager(); break;
     case "verschieben": starteVerschieben(g.id); break;
     case "pfeil": {                                  // Phase 5b: Import/Export umschalten
@@ -19317,6 +19416,39 @@ ob.infoInhalt.addEventListener("click", (e) => {
   }
   sofortAktualisieren();                            // Phase 7a: neuer Zustand sofort und ohne Neuaufbau
 });
+// Native Inventar-Geste ist von der 3D-Objektbewegung getrennt; nur am Griff ziehen.
+let lagerAusgabeZiehen = null;
+function beendeLagerAusgabeZiehen() {
+  lagerAusgabeZiehen = null;
+  for (const zeile of ob.infoInhalt.querySelectorAll("[data-lager-ausgabe-item]")) zeile.classList.remove("lager-sort-zieht", "lager-sort-davor", "lager-sort-dahinter");
+}
+ob.infoInhalt.addEventListener("dragstart", (e) => {
+  const griff = e.target.closest("[data-lager-sort-griff]"), tabelle = griff?.closest("[data-lager-ausgabe]");
+  if (!griff || !tabelle) return;
+  lagerAusgabeZiehen = { id: tabelle.dataset.lagerAusgabe, item: griff.dataset.lagerSortGriff };
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", lagerAusgabeZiehen.item);
+  griff.closest("tr").classList.add("lager-sort-zieht");
+});
+ob.infoInhalt.addEventListener("dragover", (e) => {
+  const zeile = e.target.closest("[data-lager-ausgabe-item]"), tabelle = zeile?.closest("[data-lager-ausgabe]");
+  if (!lagerAusgabeZiehen || !tabelle || tabelle.dataset.lagerAusgabe !== lagerAusgabeZiehen.id) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = "move";
+  for (const tr of tabelle.querySelectorAll("tr")) tr.classList.remove("lager-sort-davor", "lager-sort-dahinter");
+  const rect = zeile.getBoundingClientRect();
+  zeile.classList.add(e.clientY >= rect.top + rect.height / 2 ? "lager-sort-dahinter" : "lager-sort-davor");
+});
+ob.infoInhalt.addEventListener("drop", (e) => {
+  const zeile = e.target.closest("[data-lager-ausgabe-item]"), tabelle = zeile?.closest("[data-lager-ausgabe]");
+  if (!lagerAusgabeZiehen || !tabelle || tabelle.dataset.lagerAusgabe !== lagerAusgabeZiehen.id) return;
+  e.preventDefault();
+  const ziehen = lagerAusgabeZiehen, rect = zeile.getBoundingClientRect();
+  const geaendert = verschiebeLagerAusgabe(ziehen.id, ziehen.item, zeile.dataset.lagerAusgabeItem, e.clientY >= rect.top + rect.height / 2);
+  beendeLagerAusgabeZiehen();
+  if (geaendert) { zeigeMeldung(`${itemInfo(ziehen.item).name}: Ausgabe-Reihenfolge geändert.`); sofortAktualisieren(); }
+});
+ob.infoInhalt.addEventListener("dragend", beendeLagerAusgabeZiehen);
+ob.infoInhalt.addEventListener("keydown", (e) => { if (e.key === "Escape" && lagerAusgabeZiehen) beendeLagerAusgabeZiehen(); });
 $("info-schliessen").addEventListener("click", () => waehleGebaeude(null));
 
 /* --- Lager-Fenster --- */
@@ -21263,6 +21395,7 @@ function bandInfoKnopf(aktion, text, extra = "", klasse = "lz-knopf") {
 }
 // Suchausnahmen bleiben je Bauteil und Seite erhalten; der Katalog wird erst bei Bedarf geöffnet.
 const bandFilterUi = new Map();
+const bandInventarUi = new Map();
 function bandFilterZustand(t, seite) {
   const key = `${t.id}:${seite}`;
   if (!bandFilterUi.has(key)) bandFilterUi.set(key, { suche: "", offen: false, item: "" });
@@ -21313,14 +21446,57 @@ function seitenHtml(t) {
   return `<div class="info-block" id="band-seiten"><h3>${istVerteiler(t) ? "Ausgänge" : "Eingänge"}</h3><p class="modus-text">${text} ✓ = nur diese, ✕ = nie.</p>${zeilen}</div>`;
 }
 // Bestand ist ausschließlich die physisch in diesem Bauteil liegende Ware, keine Quellprognose.
+function bandInventarMengenZustand(t, item) {
+  const key = `${t.id}:${item}`;
+  if (!bandInventarUi.has(key)) bandInventarUi.set(key, { wert: "", fehler: "" });
+  return bandInventarUi.get(key);
+}
+// Nur positive ganze Dezimalzahlen akzeptieren: kein Runden, kein Exponent und kein Überlöschen.
+function pruefeBandInventarMenge(wert, vorhanden) {
+  const text = String(wert).trim();
+  if (!/^[0-9]+$/.test(text)) return { ok: false, grund: "Bitte eine positive ganze Zahl eingeben." };
+  const menge = Number(text);
+  if (!Number.isSafeInteger(menge) || menge < 1) return { ok: false, grund: "Bitte eine positive ganze Zahl eingeben." };
+  if (menge > vorhanden) return { ok: false, grund: `Es sind aktuell nur ${vorhanden} Einheiten vorhanden.` };
+  return { ok: true, menge };
+}
+function bandInventarFokusMerken() {
+  const feld = document.activeElement;
+  if (!feld?.matches("input[data-band-inventar-menge]")) return null;
+  return { bauteil: feld.dataset.bandInventarId, item: feld.dataset.item, wert: feld.value, start: feld.selectionStart, ende: feld.selectionEnd, richtung: feld.selectionDirection };
+}
+function bandInventarFokusWiederherstellen(merker) {
+  if (!merker) return;
+  const feld = [...ob.infoInhalt.querySelectorAll("input[data-band-inventar-menge]")].find((e) => e.dataset.item === merker.item && e.dataset.bandInventarId === merker.bauteil);
+  if (!feld) return;
+  feld.value = merker.wert;
+  if (document.activeElement !== feld) feld.focus({ preventScroll: true });
+  if (merker.start !== null) feld.setSelectionRange(merker.start, merker.ende, merker.richtung);
+}
 function bandInventarHtml(t) {
   const inv = typeof bandInventar === "function" ? bandInventar(t) : { bestand: {}, anzahl: 0, kapazitaet: 25 };
-  const zeilen = Object.entries(inv.bestand).filter(([, n]) => n > 0).map(([item, n]) => `<div class="band-inventar-zeile"><span>${htmlSicher(itemInfo(item).name)} <b>× ${n}</b></span>
-    <button type="button" class="mini-knopf" data-band-aktion="inventarEins" data-item="${htmlSicher(item)}" title="Eine Einheit endgültig löschen" aria-label="Eine Einheit ${htmlSicher(itemInfo(item).name)} löschen">✕ 1</button>
-    <button type="button" class="mini-knopf bau-gefahr" data-band-aktion="inventarAlle" data-item="${htmlSicher(item)}">Alle ${n} löschen …</button></div>`).join("");
-  return `<div class="info-block"><h3>Inventar dieses Bauteils: ${inv.anzahl} / ${inv.kapazitaet}</h3><p class="info-leer">✕ 1 löscht genau eine Einheit. Die zweite Aktion fragt vor dem Löschen aller Einheiten nach.</p>${zeilen || '<p class="info-leer">Leer</p>'}</div>`;
+  const zeilen = Object.entries(inv.bestand).filter(([, n]) => n > 0).map(([item, n]) => {
+    const name = htmlSicher(itemInfo(item).name), id = htmlSicher(item), ui = bandInventarMengenZustand(t, item);
+    return `<tr id="band-inventar-zeile-${id}"><td>${name}</td><td><b>${n}</b></td>
+      <td><button type="button" class="mini-knopf" data-band-aktion="inventarEins" data-item="${id}" title="Eine Einheit endgültig löschen" aria-label="Eine Einheit ${name} löschen">X</button></td>
+      <td><div class="band-inventar-betrag"><input type="text" inputmode="numeric" autocomplete="off" maxlength="16" value="${htmlSicher(ui.wert)}" data-band-inventar-menge data-band-inventar-id="${htmlSicher(t.id)}" data-item="${id}" aria-label="Anzahl ${name} löschen" aria-describedby="band-inventar-fehler-${id}" aria-invalid="${!!ui.fehler}" title="Positive ganze Anzahl, aktuell höchstens ${n}">
+        <button type="button" class="mini-knopf" data-band-aktion="inventarBetrag" data-item="${id}" aria-label="Eingegebene Anzahl ${name} löschen">[ENTER]</button></div>
+        <span class="band-inventar-fehler" id="band-inventar-fehler-${id}" role="status">${htmlSicher(ui.fehler)}</span></td>
+      <td><button type="button" class="mini-knopf bau-gefahr" data-band-aktion="inventarAlle" data-item="${id}" title="Alle ${n} Einheiten nach Bestätigung löschen" aria-label="Alle ${n} Einheiten ${name} löschen">X</button></td></tr>`;
+  }).join("");
+  return `<div class="info-block"><h3>Inventar dieses Bauteils: ${inv.anzahl} / ${inv.kapazitaet}</h3><table class="band-inventar-tabelle"><thead><tr><th scope="col">Produkt</th><th scope="col">Menge</th><th scope="col">1x Löschen</th><th scope="col">Betrag löschen</th><th scope="col">Alle Löschen</th></tr></thead><tbody>${zeilen || '<tr><td colspan="5" class="info-leer">Leer</td></tr>'}</tbody></table></div>`;
+}
+function loescheBandInventarBetrag(t, item) {
+  const ui = bandInventarMengenZustand(t, item), vorhanden = bandInventar(t).bestand[item] || 0;
+  const pruefung = pruefeBandInventarMenge(ui.wert, vorhanden);
+  if (!pruefung.ok) { ui.fehler = pruefung.grund; return false; }
+  const r = loescheBandInventar(t.id, item, pruefung.menge);
+  ui.fehler = r.ok ? "" : (r.grund || "Löschen nicht möglich.");
+  if (r.ok) zeigeMeldung(`${r.menge} × ${itemInfo(item).name} gelöscht.`);
+  return !!r.ok;
 }
 function zeichneBandInfo() {
+  const inventarFokus = bandInventarFokusMerken();
   const t = spiel.baender.get(auswahlBandId);
   if (!t) { waehleGebaeude(null); return; }
   if (bandTopologieAlt) baueBandTopologie();
@@ -21354,7 +21530,7 @@ function zeichneBandInfo() {
       const items = istStation(quelle) ? [rezeptVon(quelle)?.ausgabe].filter(Boolean)
         : [...new Set([...Object.keys(quelle.bestand), ...(art === "hauptlager" ? ROHSTOFFE.map((r) => r.id) : Object.keys(quelle.regeln))])];
       html += `<div class="info-block"><h3>Ablauf von ${htmlSicher(gebaeudeName(quelle))}</h3>
-        <p class="modus-text">${art === "hauptlager" ? "Das Hauptlager legt nur die markierten Items auf das Band (reihum)."
+        <p class="modus-text">${art === "hauptlager" ? quelle.lagerAusgabePrioritaetAktiv === true ? "Ausgabe nach der Reihenfolge im Lager. Markierte Items begrenzen die Auswahl; ohne Markierung kommen alle freigegebenen Waren aufs Band." : "Das Hauptlager legt nur die markierten Items auf das Band, in der Reihenfolge im Lager."
           : "Ohne Markierung kommt alles aufs Band, was das Gebäude abgibt; mit Markierung nur diese Items."}</p>
         <div class="filter-liste">${items.length ? items.map((item) => `<button type="button" class="filter-knopf" data-band-aktion="ablauf" data-teil="${anfang.id}" data-item="${htmlSicher(item)}"
           aria-pressed="${anfang.ablaufFilter.includes(item)}" style="--item-farbe:${itemInfo(item).farbe}">${htmlSicher(itemInfo(item).name)}</button>`).join("")
@@ -21377,7 +21553,7 @@ function zeichneBandInfo() {
     const optionen = alleItems().map((item) => `<option value="${htmlSicher(item)}" ${t.armFilter === item ? "selected" : ""}>`
       + `${htmlSicher(itemInfo(item).name)}${bestand[item] ? ` (${bestand[item]} da)` : ""}</option>`).join("");
     html += `<label class="info-feld">Welches Item entnehmen? <select data-band-aktion="armFilter">
-        <option value="">– alles aus dem Ausgabefach bzw. alles Abholbare –</option>${optionen}</select></label>`;
+        <option value="">– alles Abholbare in der Lager-Reihenfolge –</option>${optionen}</select></label>`;
   } else if (t.typ === "greifGeber") {
     html += `<label class="info-feld">Nur dieses Item <select data-band-aktion="armFilter">${itemOptionen(t.armFilter || "", "– alles, was das Ziel annimmt –")}</select></label>`;
   }
@@ -21396,6 +21572,7 @@ function zeichneBandInfo() {
   }
   html += `</div>`;
   morphe(ob.infoInhalt, html);                      // Phase 7a: ohne Neuaufbau
+  bandInventarFokusWiederherstellen(inventarFokus);
   const ziel = $("band-zahlen");
   if (ziel) ziel._html = zahlen;
   const puffer = $("band-puffer");                  // Phase 7b Nachtrag
@@ -21409,7 +21586,11 @@ function aktualisiereBandInfoZahlen() {
   if (performance.now() < infoKlickSperre) return;
   setzeHtml(ziel, bandInfoZahlenHtml(t));
   const inventar = $("band-inventar");
-  if (inventar) morphe(inventar, bandInventarHtml(t));
+  if (inventar) {
+    const fokus = bandInventarFokusMerken();
+    morphe(inventar, bandInventarHtml(t));
+    bandInventarFokusWiederherstellen(fokus);
+  }
   const seiten = $("band-seiten");
   if (seiten) {
     const vorlage = document.createElement("template");
@@ -21456,7 +21637,7 @@ function bandInfoZahlenHtml(t) {
       ${!q || !z ? `<p class="info-warnung">⚠ Hinter und vor dem Arm muss ein Band oder Gebäude stehen.</p>` : ""}
       ${q && t.typ === "greifarm" && q.art !== "gebaeude" ? `<p class="info-warnung">⚠ Der Nehmer holt nur aus einem Gebäude hinter sich. Für Items vom Band: Greifarm-Geber.</p>` : ""}
       ${q && t.typ === "greifGeber" && q.art !== "band" ? `<p class="info-warnung">⚠ Der Geber nimmt nur vom Band hinter sich. Für Items aus einem Gebäude: Greifarm-Nehmer.</p>` : ""}
-      ${q && z && q.art === "gebaeude" && typVon(q.g).art === "hauptlager" && z.art === "band" && !t.armFilter ? `<p class="info-warnung">⚠ Vom Hauptlager auf ein Band nur mit Item-Filter.</p>` : ""}
+      ${q && z && q.art === "gebaeude" && typVon(q.g).art === "hauptlager" && z.art === "band" && !t.armFilter && q.g.lagerAusgabePrioritaetAktiv !== true ? `<p class="info-warnung">⚠ Wähle einen Item-Filter oder ändere die Ausgabe-Reihenfolge im Hauptlager, um die automatische Ausgabe zu aktivieren.</p>` : ""}
       ${t.wartet > 3 ? `<p class="info-warnung">⚠ Das Ziel nimmt gerade nichts an.</p>` : ""}</div>`;
   } else {
     const items = bandInventar(t).anzahl;   // AP01: sichtbare Ware und Reserve gemeinsam zählen.
@@ -21519,6 +21700,7 @@ ob.infoInhalt.addEventListener("click", (e) => {
     }
     case "ablauf": setzeBandEinstellung(knopf.dataset.teil, "ablaufFilter", knopf.dataset.item); break;
     case "seiteSperren": setzeBandEinstellung(t.id, "seiteSperren", knopf.dataset.seite); break;          // Phase 7a
+    case "inventarBetrag": loescheBandInventarBetrag(t, knopf.dataset.item); break;
     case "inventarEins": {
       const r = loescheBandInventar(t.id, knopf.dataset.item, 1);
       if (!r.ok) zeigeMeldung(r.grund || "Keine Einheit mehr vorhanden.", true);
@@ -21590,6 +21772,27 @@ ob.infoInhalt.addEventListener("click", (e) => {
   }
   infoKlickSperre = 0;
   if (spiel.baender.has(auswahlBandId)) { zeichneBandInfo(); bandRahmenNeu(); }   // Knöpfe sofort im neuen Zustand zeigen
+});
+// Mengen pro Bauteil/Item bleiben beim Live-Refresh und beim erneuten Auswählen erhalten.
+ob.infoInhalt.addEventListener("input", (e) => {
+  if (!e.target.matches("input[data-band-inventar-menge]")) return;
+  const t = spiel.baender.get(auswahlBandId); if (!t) return;
+  const ui = bandInventarMengenZustand(t, e.target.dataset.item);
+  ui.wert = e.target.value; ui.fehler = "";
+  e.target.setAttribute("aria-invalid", "false");
+  const fehler = e.target.closest("td").querySelector(".band-inventar-fehler");
+  if (fehler) fehler.textContent = "";
+});
+ob.infoInhalt.addEventListener("keydown", (e) => {
+  if (!e.target.matches("input[data-band-inventar-menge]")) return;
+  e.stopPropagation();
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const t = spiel.baender.get(auswahlBandId); if (!t) return;
+    bandInventarMengenZustand(t, e.target.dataset.item).wert = e.target.value;
+    loescheBandInventarBetrag(t, e.target.dataset.item);
+    infoKlickSperre = 0; zeichneBandInfo();
+  }
 });
 // Suche und Auswahl bleiben auch während der laufenden Bestandsaktualisierung erhalten.
 ob.infoInhalt.addEventListener("toggle", (e) => {
@@ -22586,6 +22789,8 @@ function kopiereAuswahl() {
     gebaeude: gebaeude.map((g) => ({
       typ: g.typ, drehung: g.drehung, mx: g.mitte.x - ox, mz: g.mitte.z - oz,
       rezept: g.rezept, pausiert: !!g.pausiert, regeln: kopie(g.regeln || {}),
+      lagerAusgabeReihenfolge: [...(g.lagerAusgabeReihenfolge || [])],
+      lagerAusgabePrioritaetAktiv: g.lagerAusgabePrioritaetAktiv === true,
       importVon: intern(g.importVon), exportNach: intern(g.exportNach),
     })),
     baender: baender.map((t) => {
@@ -22669,7 +22874,7 @@ function fuegeEin(k, drehung = 0) {
   const neu = plan.gebaeude.map((p) => {
     if (p.ausDepot) { spiel.depot.gebaeude[p.typ]--; if (!spiel.depot.gebaeude[p.typ]) delete spiel.depot.gebaeude[p.typ]; }
     else if (p.kosten > 0) bucheGeld(-p.kosten, "bau");
-    return stelleGebaeudeAuf(p.typ, p.x, p.z, p.drehung, { rezept: p.e.rezept, pausiert: p.e.pausiert, regeln: p.e.regeln });
+    return stelleGebaeudeAuf(p.typ, p.x, p.z, p.drehung, { rezept: p.e.rezept, pausiert: p.e.pausiert, regeln: p.e.regeln, lagerAusgabeReihenfolge: p.e.lagerAusgabeReihenfolge, lagerAusgabePrioritaetAktiv: p.e.lagerAusgabePrioritaetAktiv });
   });
   // Verknüpfungen innerhalb der Kopie übernehmen; Gebäude ohne solche verknüpfen sich wie beim normalen Bauen
   const verknuepft = new Set();
