@@ -13,7 +13,7 @@ function extract(name) {
   assert(m, 'Funktion fehlt: ' + name);
   return m[0];
 }
-const names = ['bandInventar','loescheBandInventar','bandQuellItems','warenFlags','pufferWare',
+const names = ['normalisiereBandInventarReihenfolge','bandInventarItems','ordneBandInventar','verschiebeBandInventar','verschiebeBandInventarSchritt','bandInventar','loescheBandInventar','bandQuellItems','warenFlags','pufferWare',
   'hatPuffer','pufferVon','hatPlatz','hatPhysischPlatz','entladeBandReserve','legeAufBand','bewegeItems','seiteEinstellung','hatNurFilter','seiteLaesstDurch',
   'wartetVor','zusammenLaesstDurch','smartZusammenLaesstDurch','smartZusammenZielPlatz',
   'nimmAufBand','splitterFilterPasst','splitterGibWeiter','legeAufAusgang','smartGibWeiter',
