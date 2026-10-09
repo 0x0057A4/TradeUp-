@@ -57,8 +57,8 @@ pruefe('UI-Funktionen dynamisch extrahierbar', () => {
     bandInventar: () => ({ bestand: { item1: 2 }, anzahl: 2, kapazitaet: 25 }),
   };
   vm.createContext(ctx);
-  const namen = ['bandFilterZustand', 'bandFilterTreffer', 'bandFilterOptionen', 'bandFilterChip', 'seitenHtml', 'bandInventarHtml', 'bandInfoZahlenHtml'];
-  vm.runInContext('const bandFilterUi = new Map();\n' + namen.map(funktion).join('\n'), ctx);
+  const namen = ['bandFilterZustand', 'bandFilterTreffer', 'bandFilterOptionen', 'bandFilterChip', 'seitenHtml', 'bandInventarMengenZustand', 'pruefeBandInventarMenge', 'bandInventarFokusMerken', 'bandInventarFokusWiederherstellen', 'bandInventarHtml', 'loescheBandInventarBetrag', 'bandInfoZahlenHtml'];
+  vm.runInContext('const bandFilterUi = new Map(); const bandInventarUi = new Map();\n' + namen.map(funktion).join('\n'), ctx);
 });
 const merger = { id: 'b1', typ: 'smartZusammen', vorgaenger: [] };
 pruefe('400 Katalogitems ergeben ohne Suche nur Quellangebot und gespeicherte Ausnahmen', () => {
@@ -98,9 +98,40 @@ pruefe('Inventar zeigt echte Stückzahl, Kapazität und getrennte Löschaktionen
   assert(out.includes('2 / 25'));
   assert(out.includes('data-band-aktion="inventarEins"'));
   assert(out.includes('aria-label="Eine Einheit Item item1 löschen"'));
-  assert(out.includes('✕ 1'));
+  assert(out.includes('>X</button>'));
   assert(out.includes('data-band-aktion="inventarAlle"'));
-  assert(out.includes('Alle 2 löschen …'));
+  assert(out.includes('Alle 2 Einheiten Item item1 löschen'));
+  for (const kopf of ['Produkt', 'Menge', '1x Löschen', 'Betrag löschen', 'Alle Löschen']) assert(out.includes(`<th scope="col">${kopf}</th>`));
+  assert(out.includes('data-band-aktion="inventarBetrag"'));
+  assert(out.includes('>[ENTER]</button>'));
+  assert(out.includes('inputmode="numeric"'));
+});
+pruefe('Löschbetrag akzeptiert ausschließlich positive ganze Zahlen bis zum Livebestand', () => {
+  assert.equal(ctx.pruefeBandInventarMenge('1', 2).menge, 1);
+  assert.equal(ctx.pruefeBandInventarMenge('2', 2).menge, 2);
+  for (const wert of ['', '0', '-1', '1.5', '1,5', '1e1', 'NaN', 'Infinity', '3', '9007199254740993']) assert.equal(ctx.pruefeBandInventarMenge(wert, 2).ok, false, wert);
+  assert.equal(ctx.pruefeBandInventarMenge('1', 0).ok, false);
+});
+pruefe('Ungültiger Betrag löst keine API-Mutation aus; gültiger Betrag löscht exakt die Eingabe', () => {
+  const aufrufe = []; ctx.loescheBandInventar = (id, item, menge) => { aufrufe.push({ id, item, menge }); return { ok: true, menge }; }; ctx.zeigeMeldung = () => {};
+  const ui = ctx.bandInventarMengenZustand(merger, 'item1');
+  ui.wert = '3'; assert.equal(ctx.loescheBandInventarBetrag(merger, 'item1'), false); assert.equal(aufrufe.length, 0); assert(ui.fehler.includes('2'));
+  ui.wert = '2'; assert.equal(ctx.loescheBandInventarBetrag(merger, 'item1'), true); assert.equal(aufrufe.length, 1); assert.equal(aufrufe[0].menge, 2); assert.equal(ui.fehler, '');
+});
+pruefe('Mengen bleiben pro Bauteil und Item getrennt über Rendern und Auswahl erhalten', () => {
+  const ui = ctx.bandInventarMengenZustand(merger, 'item1'); ui.wert = '2';
+  assert(ctx.bandInventarHtml(merger).includes('value="2"'));
+  const anderes = { ...merger, id: 'anderes' }; assert.equal(ctx.bandInventarMengenZustand(anderes, 'item1').wert, '');
+  ctx.bandInventarHtml(anderes); assert.equal(ctx.bandInventarMengenZustand(merger, 'item1').wert, '2');
+});
+pruefe('Fokusmodell erhält Mengenfeld und Textauswahl bei ersetzter Bestandszeile', () => {
+  const alt = { dataset: { item: 'item1', bandInventarId: 'b1' }, value: '12', selectionStart: 1, selectionEnd: 2, selectionDirection: 'forward', matches: () => true };
+  const doc = { activeElement: alt }, auswahl = [];
+  const neu = { dataset: alt.dataset, focus: () => { doc.activeElement = neu; }, setSelectionRange: (...args) => { auswahl.push(args); } };
+  ctx.document = doc; ctx.ob = { infoInhalt: { querySelectorAll: () => [neu] } };
+  const merker = ctx.bandInventarFokusMerken(); ctx.bandInventarFokusWiederherstellen(merker);
+  assert.equal(doc.activeElement, neu); assert.equal(neu.value, '12'); assert.equal(auswahl[0][0], 1); assert.equal(auswahl[0][1], 2);
+  doc.activeElement = alt; neu.dataset = { item: 'item1', bandInventarId: 'anderes' }; ctx.bandInventarFokusWiederherstellen(merker); assert.equal(doc.activeElement, alt);
 });
 pruefe('Leeres Inventar zeigt keine Löschknöpfe', () => {
   const vorher = ctx.bandInventar;
