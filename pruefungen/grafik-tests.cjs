@@ -28,6 +28,7 @@ function fixture() {
   const ctx={level:{breite:W,tiefe:H},rasterDaten:grid,spiel:{gebaeude:new Map(),baender:new Map(),depot:{gebaeude:{},baender:{}}},
     bandTypNach:types,gebaeudeTypNach:buildings,BAENDER:{untergrundReichweite:7},KACHEL_GROESSE:1,
     RICHTUNGEN:[{x:0,z:1},{x:-1,z:0},{x:0,z:-1},{x:1,z:0}],mitarbeiter:[],events:[],updates:0,
+    letzterBandKlick:{id:null,zeit:0},
     istImRaster:(x,z)=>x>=0&&x<W&&z>=0&&z<H,
     holeKachel:(x,z)=>grid[x]?.[z]||null,
     istBegehbar:(x,z)=>!!grid[x]?.[z]?.begehbar,
