@@ -57,7 +57,7 @@ pruefe('UI-Funktionen dynamisch extrahierbar', () => {
     bandInventar: () => ({ bestand: { item1: 2 }, anzahl: 2, kapazitaet: 25 }),
   };
   vm.createContext(ctx);
-  const namen = ['bandFilterZustand', 'bandFilterTreffer', 'bandFilterOptionen', 'bandFilterChip', 'seitenHtml', 'bandInventarMengenZustand', 'pruefeBandInventarMenge', 'bandInventarFokusMerken', 'bandInventarFokusWiederherstellen', 'bandInventarHtml', 'loescheBandInventarBetrag', 'bandInfoZahlenHtml'];
+  const namen = ['normalisiereBandInventarReihenfolge', 'bandInventarItems', 'bandFilterZustand', 'bandFilterTreffer', 'bandFilterOptionen', 'bandFilterChip', 'seitenHtml', 'bandInventarMengenZustand', 'pruefeBandInventarMenge', 'bandInventarFokusMerken', 'bandInventarFokusWiederherstellen', 'bandInventarHtml', 'loescheBandInventarBetrag', 'bandInfoZahlenHtml'];
   vm.runInContext('const bandFilterUi = new Map(); const bandInventarUi = new Map();\n' + namen.map(funktion).join('\n'), ctx);
 });
 const merger = { id: 'b1', typ: 'smartZusammen', vorgaenger: [] };
@@ -103,7 +103,7 @@ pruefe('Inventar zeigt echte Stückzahl, Kapazität und getrennte Löschaktionen
   assert(out.includes('Alle 2 Einheiten Item item1 löschen'));
   for (const kopf of ['Produkt', 'Menge', '1x Löschen', 'Betrag löschen', 'Alle Löschen']) assert(out.includes(`<th scope="col">${kopf}</th>`));
   assert(out.includes('data-band-aktion="inventarBetrag"'));
-  assert(out.includes('>[ENTER]</button>'));
+  assert(out.includes('title="Menge bestätigen und löschen">X</button>'));
   assert(out.includes('inputmode="numeric"'));
 });
 pruefe('Löschbetrag akzeptiert ausschließlich positive ganze Zahlen bis zum Livebestand', () => {
