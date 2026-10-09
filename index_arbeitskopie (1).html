@@ -3980,7 +3980,7 @@ const PRODUKTION = {
   lieferAlterung:      60,    // nach so vielen Sekunden ohne Lieferung hat ein Zwischenlager bei Kurieren Vorrang
   speicherIntervall:   10,    // alle so viele Sekunden wird der Spielstand im Browser gespeichert
   speicherSchluessel:  "tradeup.spielstand", // Name, unter dem der Browser den Spielstand speichert
-  spielstandVersion:   15,    // Format-Version des Spielstands (7a: 4 …; 7b: 6 …; 7c: 8 Komponenten-Katalog + Gehäuse; 7d: 9 neue Forschung; P1: 10 = 10 Rohstoffe (metall→eisen) + Vollraster-Gehäuse; W1: 11 = Gefahrenzulage je Mitarbeiter; W2: 12 = QA-Status je Blaupause; W2b: 13 = Prüfquote { g, m } statt true/false; W3: 14 = Krisen (M2), KI-Markt & Kopien (M5); ältere werden umgewandelt)
+  spielstandVersion:   16,    // Format-Version des Spielstands (7a: 4 …; 7b: 6 …; 7c: 8 Komponenten-Katalog + Gehäuse; 7d: 9 neue Forschung; P1: 10 = 10 Rohstoffe (metall→eisen) + Vollraster-Gehäuse; W1: 11 = Gefahrenzulage je Mitarbeiter; W2: 12 = QA-Status je Blaupause; W2b: 13 = Prüfquote { g, m } statt true/false; W3: 14 = Krisen (M2), KI-Markt & Kopien (M5); ältere werden umgewandelt)
   kurierTraglast:      5,     // Phase 7b: Grundwert Items pro Kurier-Gang, Ausrüstung und Forschung addieren sich
   // Phase 7b: Lager haben ein Volumen-Limit. So viel Platz braucht ein Item:
   volumenRohstoff:     1,     // Rohstoff
@@ -6970,6 +6970,10 @@ function speichereBlaupause(layout, name, id = null) {
     erstellt: vorhanden ? vorhanden.erstellt : jetzt,
     geaendert: jetzt,
   };
+  const historien = vorhanden ? produktStaende(vorhanden) : [];
+  blaupause.produktVersion = vorhanden ? (vorhanden.produktVersion || 1) + 1 : 1;
+  blaupause.produktId = vorhanden ? `${blaupause.id}~v${blaupause.produktVersion}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` : blaupause.id;
+  blaupause.produktHistorie = historien;
   if (vorhanden) liste[liste.indexOf(vorhanden)] = blaupause;
   else liste.push(blaupause);
   schreibeBlaupausen(liste);
@@ -6981,7 +6985,8 @@ function speichereBlaupause(layout, name, id = null) {
 // (Phase 7c) passt ein Teil nicht an seine Stelle (veraltete Blaupause), kommt es an die erste freie.
 // Rückgabe: { layout, blaupause, uebersprungen } oder null.
 function ladeBlaupauseInsLayout(id) {
-  const blaupause = ladeBlaupausen().find((b) => b.id === id);
+  const blaupause = ladeBlaupausen().flatMap((b) => produktStaende(b)).find((b) => b.id === id)
+    || ladeBlaupausen().find((b) => b.id === id);
   if (!blaupause) return null;
   const layout = erstelleLeeresLayout(blaupause.gehaeuse || LAYOUT.altGehaeuse);
   let uebersprungen = 0;
@@ -7026,6 +7031,7 @@ function dupliziereBlaupause(id) {
     erstellt: jetzt,
     geaendert: jetzt,
   };
+  kopie.produktId = kopie.id; kopie.produktVersion = 1; kopie.produktHistorie = [];
   liste.push(kopie);
   schreibeBlaupausen(liste);
   return kopie;
@@ -7727,7 +7733,7 @@ function zeichneBlaupausen() {
     <li data-id="${htmlSicher(bp.id)}" class="${bp.id === designer.blaupauseId ? "aktiv" : ""}">
       <button class="lz-bp-laden" type="button" data-aktion="laden" title="In den Designer laden">
         ${blaupausenMiniHtml(bp)}
-        <span class="lz-bp-text"><b>${htmlSicher(bp.name)}${bp.werte && bp.werte.ueberhitzt ? ' <span class="lz-bp-warn" title="überhitzt">⚠</span>' : ""}</b>
+        <span class="lz-bp-text"><b>${htmlSicher(produktVersionsName(bp))}${bp.werte && bp.werte.ueberhitzt ? ' <span class="lz-bp-warn" title="überhitzt">⚠</span>' : ""}</b>
           <small>${bp.werte ? `${bp.werte.belegung}/${kachelnVonBlaupause(bp)} Kacheln · Hitze ${bp.werte.gesamtHitze}` : ""}${blaupausenKlassenText(bp)}</small>
           <span class="lz-balken"><i style="width:${Math.round((bp.werte ? bp.werte.belegung : 0) / (kachelnVonBlaupause(bp) || 1) * 100)}%"></i></span>
         </span>
@@ -7757,7 +7763,7 @@ lz.blaupausen.addEventListener("click", (e) => {
       const ergebnis = ladeBlaupauseInsLayout(id);
       if (!ergebnis) return;
       aendereLayout(() => { designer.layout = ergebnis.layout; return true; }); // Laden ist rückgängig machbar
-      designer.blaupauseId = id;
+      designer.blaupauseId = ergebnis.blaupause.blaupauseId || ergebnis.blaupause.id;
       designer.name = ergebnis.blaupause.name;
       lz.name.value = designer.name;
       ui.auswahlId = null;
@@ -8074,7 +8080,7 @@ document.getElementById("lz-speichern").addEventListener("click", () => {
   if (blaupause.werte.ueberhitzt) {
     zeigeMeldung(`„${blaupause.name}“ gespeichert${nurBisNeuladen} – Achtung, Teile sind überhitzt!`, true);
   } else {
-    zeigeMeldung(`Blaupause „${blaupause.name}“ gespeichert${nurBisNeuladen}.`);
+    zeigeMeldung(`„${produktVersionsName(blaupause)}“ gespeichert${nurBisNeuladen}. An der Montagestation kannst du diese Version auswählen.`);
   }
   meldeEreignis("blaupauseGespeichert", { blaupause });
 });
@@ -8242,6 +8248,7 @@ function spielStartwerte() {
     naechstePersonId: 1,
     tempo: 1,                     // 0 = Pause, 1, 2, 3
     tempoVorPause: 1,
+    produktVersionen: {},        // Unveränderliche Snapshots, Schlüssel = Produkt-ID
     produktNamen: {},             // Blaupausen-ID → Name (bleibt, auch wenn die Blaupause gelöscht wird)
     statistik: { produziert: 0, ausschuss: 0, verkauft: 0, umsatz: 0, zerlegt: 0,
                  auftraegeErfuellt: 0, auftraegeVersaeumt: 0, rueckrufe: 0, krisenErfuellt: 0, krisenVerloren: 0 },   // W2 (M7): rueckrufe · W3 (M2): Krisen
@@ -8293,7 +8300,7 @@ const spiel = spielStartwerte();
 function itemInfo(id) {
   if (ITEMS.has(id)) return ITEMS.get(id);
   if (id.startsWith("p:")) {
-    return { id, name: spiel.produktNamen[id.slice(2)] || "Produkt", farbe: GRAFIK.farbeProdukt, art: "produkt" };
+    return { id, name: (spiel.produktNamen[id.slice(2)] || "Produkt") + (spiel.produktVersionen?.[id.slice(2)] ? ` · V${spiel.produktVersionen[id.slice(2)].produktVersion || 1}` : ""), farbe: GRAFIK.farbeProdukt, art: "produkt" };
   }
   return { id, name: id, farbe: "#cccccc", art: "unbekannt" };
 }
@@ -8767,7 +8774,8 @@ function stelleGebaeudeAuf(typ, x, z, drehung, extra = {}) {
     exportNach: [...(extra.exportNach || [])],   // ... und in die er sein Erzeugnis bringt (nur Stationen)
     rezept: extra.rezept || null,
     pausiert: !!extra.pausiert,
-    fortschritt: 0,
+    fortschritt: Math.max(0, Math.min(1, Number(extra.fortschritt) || 0)),
+    autoRezept: extra.autoRezept ? JSON.parse(JSON.stringify(extra.autoRezept)) : null,
     arbeiterId: null,
     status: "",
     version: 0,
@@ -9430,19 +9438,39 @@ function fertigwareImLager() {
 // Blaupausen werden nicht bei jedem Schritt aus dem Browser-Speicher gelesen,
 // sondern hier zwischengespeichert und bei Änderungen erneuert.
 let blaupausenNachId = new Map();
-function erneuereBlaupausenSpeicher() {
-  blaupausenNachId = new Map(ladeBlaupausen().map((bp) => [bp.id, bp]));
-  for (const bp of blaupausenNachId.values()) merkeProdukt(bp);
+// Designer-ID und Waren-ID werden getrennt: alte Waren-IDs bleiben unverändert.
+function produktSnapshot(bp) {
+  const { produktHistorie, ...rest } = bp;
+  return JSON.parse(JSON.stringify({ ...rest, id: bp.produktId || bp.id,
+    blaupauseId: bp.blaupauseId || bp.id, produktVersion: bp.produktVersion || 1 }));
 }
-// Merkt sich Name, Bauteile und Hitze-Zustand eines Produkts (Phase 5: für Marktwert und
-// Produktklasse). Bleibt erhalten, auch wenn die Blaupause später gelöscht wird.
+function produktStaende(bp) {
+  return [...(bp.produktHistorie || []).map(produktSnapshot), produktSnapshot(bp)];
+}
+function produktVersionsName(bp) {
+  return `${bp.name} · V${bp.produktVersion || 1}`;
+}
+function erneuereBlaupausenSpeicher() {
+  spiel.produktVersionen ||= {};
+  blaupausenNachId = new Map();
+  for (const bp of ladeBlaupausen()) {
+    for (const stand of produktStaende(bp)) {
+      if (!spiel.produktVersionen[stand.id]) spiel.produktVersionen[stand.id] = stand;
+      const gespeichert = spiel.produktVersionen[stand.id];
+      blaupausenNachId.set(stand.id, gespeichert);
+      merkeProdukt(gespeichert);
+    }
+  }
+}
+// Einmal registrierte Material-, Wärme- und Namensdaten gehören genau dieser Version.
 function merkeProdukt(bp) {
-  spiel.produktNamen[bp.id] = bp.name;
-  spiel.produktTeile[bp.id] = teileZaehlen(bp.teile);
-  spiel.produktUeberhitzt[bp.id] = !!(bp.werte && bp.werte.ueberhitzt);
-  spiel.produktHitze[bp.id] = Math.round((bp.werte && bp.werte.gesamtHitze) || 0);      // W1 (M3)
-  spiel.produktMaxHitze[bp.id] = Math.round((bp.werte && bp.werte.maxHitze) || 0);      // W1 (M3)
-  if (bp.gehaeuse) spiel.produktGehaeuse[bp.id] = bp.gehaeuse;   // Phase 7c
+  const id = bp.produktId || bp.id;
+  if (!Object.hasOwn(spiel.produktNamen, id)) spiel.produktNamen[id] = bp.name;
+  if (!Object.hasOwn(spiel.produktTeile, id)) spiel.produktTeile[id] = teileZaehlen(bp.teile);
+  if (!Object.hasOwn(spiel.produktUeberhitzt, id)) spiel.produktUeberhitzt[id] = !!bp.werte?.ueberhitzt;
+  if (!Object.hasOwn(spiel.produktHitze, id)) spiel.produktHitze[id] = Math.round(bp.werte?.gesamtHitze || 0);
+  if (!Object.hasOwn(spiel.produktMaxHitze, id)) spiel.produktMaxHitze[id] = Math.round(bp.werte?.maxHitze || 0);
+  if (!Object.hasOwn(spiel.produktGehaeuse, id) && bp.gehaeuse) spiel.produktGehaeuse[id] = bp.gehaeuse;
 }
 // [{ typ }, ...] → { typ: Anzahl }
 function teileZaehlen(teile) {
@@ -9499,8 +9527,9 @@ function setzeRezept(id, rezept) {
     if (!b || !b.rezept || !b.freigeschaltet) return false;
   }
   if (rezept && !maschineKann(typVon(s), rezept)) return false;   // Phase 7d: Maschine kann das nicht herstellen
+  if (rezept && typVon(s).art === "montage" && !blaupausenNachId.has(rezept)) return false;
   s.rezept = rezept || null;
-  s.fortschritt = 0;
+  if (!s.autoRezept && !mitarbeiter.some((p) => p.stationId === s.id && p.auftrag?.rezept)) s.fortschritt = 0;
   if (rezept && typVon(s).art === "montage" && blaupausenNachId.has(rezept)) merkeProdukt(blaupausenNachId.get(rezept));
   meldeStruktur();
   return true;
@@ -10332,11 +10361,8 @@ function schrittArbeiter(p, dt) {
       if (!q) return beendeAuftrag(p);
       p.timer -= dt;
       if (p.timer > 0) break;
-      const r = rezeptVon(s);
-      if (!r || s.pausiert) return beendeAuftrag(p);
-      if (r.schluessel !== a.rezept.schluessel) {   // Rezept wurde unterwegs geändert
-        a.rezept = r; a.items = { ...r.eingaben }; a.art = "warten";
-      }
+      const r = a.rezept; // Reservierter Durchgang behält seine Version auch nach Rezeptwechsel.
+      if (!r || s.pausiert) return;
       const res = reservierungen();
       const eigene = a.art === "material";           // eigene Reservierung zählt für mich als verfügbar
       const alles = Object.entries(r.eingaben).every(([i, n]) => nimmbar(q, a.quelleFach, i, res) + (eigene ? n : 0) >= n);
@@ -10754,9 +10780,30 @@ function stelleAufbauWiederHer() {
 let spielstandSpeicherbar = true;    // false, sobald der Browser-Speicher einmal versagt hat
 let spielstandAktiv = false;         // erst nach dem Laden speichern (sonst würde ein leerer Stand gespeichert)
 
+// Nur Produktionsjobs werden wieder aufgenommen. Kuriertransporte nutzen weiter die Rückbuchung.
+function produktionsAuftragDaten(p) {
+  if (!p.stationId || !p.auftrag?.rezept || !["zumLager", "nimmt", "wartetMaterial", "zurStation", "arbeitet"].includes(p.phase)) return null;
+  return JSON.parse(JSON.stringify({ auftrag: p.auftrag, phase: p.phase, traegt: p.traegt, timer: p.timer }));
+}
+function ladeProduktionsAuftrag(p, s, daten) {
+  if (!daten) return;
+  if (!s || s.automatik || p.stationId !== s.id || !daten.auftrag?.rezept) {
+    bucheInsLager(daten.traegt || {}); return;
+  }
+  p.auftrag = JSON.parse(JSON.stringify(daten.auftrag));
+  p.traegt = { ...(daten.traegt || {}) };
+  p.timer = Math.max(0, Number(daten.timer) || 0);
+  const abgeholt = !!p.auftrag.abgeholt;
+  p.phase = abgeholt ? "zurStation" : "zumLager";
+  p.auftrag.fortsetzen = abgeholt;
+  const ziel = abgeholt ? s : quelleGueltig(s, p.auftrag);
+  if (!ziel) { bucheInsLager(p.traegt); p.traegt = {}; p.auftrag = null; p.phase = "frei"; return; }
+  geheZu(p, ziel.zugang);
+}
+
 function spielstandDaten() {
   const unterwegs = {};
-  for (const p of mitarbeiter) bucheItems(unterwegs, p.traegt);
+  for (const p of mitarbeiter) if (!produktionsAuftragDaten(p)) bucheItems(unterwegs, p.traegt);
   return {
     version: PRODUKTION.spielstandVersion,
     gespeichert: new Date().toISOString(),
@@ -10773,7 +10820,7 @@ function spielstandDaten() {
       siloWare: g.siloWare || undefined, nachkauf: g.nachkauf === false ? false : undefined,   // Phase 7d (optional)
       exportModus: g.exportModus, abholTimer: g.abholTimer, letzteAbholung: g.letzteAbholung,
       // Phase 5b: Eingangsfach (Phase 6: plus Material, das eine Automatik-Station gerade verarbeitet)
-      eingang: g.autoRezept ? (() => { const e = { ...g.eingang }; bucheItems(e, g.autoRezept.eingaben); return e; })() : g.eingang,
+      eingang: g.eingang, autoRezept: g.autoRezept || null, fortschritt: g.fortschritt || 0,
       expedition: g.expedition || undefined,   // W3 (M1): laufende Expedition am Außenposten
     })),
     // Phase 6: Hallenausbau, Bänder, Greifarme
@@ -10786,6 +10833,7 @@ function spielstandDaten() {
     mitarbeiter: mitarbeiter.map((p) => ({
       id: p.id, name: p.name, rolle: p.rolle, stufe: p.stufe, stationId: p.stationId,
       manuellFrei: !!p.manuellFrei, kachel: personKachel(p), ausruestung: p.ausruestung, ep: p.ep,
+      produktion: produktionsAuftragDaten(p),
       ohneAufgabe: !!p.ohneAufgabe,   // Phase 6
       zulage: p.zulage || undefined,  // W1 (M6): bezahlte Gefahrenzulage
       istDu: !!p.istDu, flexibel: p.istDu ? !!p.flexibel : undefined,   // Phase 7a (Nachtrag 2)
@@ -10794,6 +10842,7 @@ function spielstandDaten() {
     rezeptPins: spiel.rezeptPins,                  // Phase 7a (Nachtrag 2)
     komponenten: { hergestellt: spiel.hergestellt, freigeschaltet: spiel.freigeschaltet },   // Phase 7c
     forschung: forschungSpeicherDaten(),           // Phase 7d: Projekte, Firmen-XP, Overseer
+    produktVersionen: spiel.produktVersionen,
     produktNamen: spiel.produktNamen,
     statistik: spiel.statistik,
     schnappschuss: spiel.schnappschuss,
@@ -10842,7 +10891,7 @@ function leseSpielstand() {
     // W1: version 10 wird gelesen (Mitarbeiter ohne Gefahrenzulage starten mit 0)
     // W2: version 11 wird gelesen (Blaupausen starten ohne QA-Prüfung)
     // W2b: version 12 wird gelesen (produktQa true/false → Prüfquote { g, m })
-    return daten && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, PRODUKTION.spielstandVersion].includes(daten.version) && Array.isArray(daten.gebaeude) ? daten : null;
+    return daten && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, PRODUKTION.spielstandVersion].includes(daten.version) && Array.isArray(daten.gebaeude) ? daten : null;
   } catch (fehler) {
     spielstandSpeicherbar = false;
     return null;
@@ -10881,9 +10930,11 @@ function wendeSpielstandAn(d) {
   spiel.naechsteId = d.naechsteId || 1;
   spiel.naechstePersonId = d.naechstePersonId || 1;
   spiel.rezeptPins = Array.isArray(d.rezeptPins) ? d.rezeptPins.filter((p) => p && typeof p.schluessel === "string") : [];
-  spiel.produktNamen = { ...(d.produktNamen || {}), ...spiel.produktNamen };
+  spiel.produktVersionen = JSON.parse(JSON.stringify(d.produktVersionen || {}));
+  spiel.produktNamen = { ...spiel.produktNamen, ...(d.produktNamen || {}) };
   spiel.statistik = { ...spiel.statistik, ...(d.statistik || {}) };
   ladeWirtschaft(d.wirtschaft || null);          // Phase 5 (fehlt bei version 1: Neustart der Wirtschaft)
+  erneuereBlaupausenSpeicher();
   ladeForschung(d.forschung || null);            // Phase 7d
   spiel.depot = { gebaeude: { ...(d.depot?.gebaeude || {}) }, items: { ...(d.depot?.items || {}) }, baender: { ...(d.depot?.baender || {}) } };
   spiel.schnappschuss = d.schnappschuss || null;
@@ -10899,6 +10950,7 @@ function wendeSpielstandAn(d) {
       spiel.depot.gebaeude[e.typ] = (spiel.depot.gebaeude[e.typ] || 0) + 1;
       bucheItems(spiel.depot.items, e.bestand || {});
       bucheItems(spiel.depot.items, e.eingang || {});
+      if (e.autoRezept) bucheItems(spiel.depot.items, e.autoRezept.eingaben || {});
       continue;
     }
     stelleGebaeudeAuf(e.typ, e.x, e.z, e.drehung, e);
@@ -10976,6 +11028,7 @@ function wendeSpielstandAn(d) {
     const s = m.stationId && spiel.gebaeude.get(m.stationId);
     if (s && istStation(s) && !s.arbeiterId && !s.automatik) { p.stationId = s.id; s.arbeiterId = p.id; }
     else if (s && s.automatik && p.rolle === "arbeiter") { p.ohneAufgabe = true; p.manuellFrei = true; }   // Phase 6
+    ladeProduktionsAuftrag(p, s, m.produktion);
   }
   if (!mitarbeiter.includes(figur)) nimmDuAuf();  // ältere Spielstände: "Du" kommt dazu
   bucheInsLager(d.unterwegs || {});
@@ -10999,10 +11052,9 @@ function starteNeuesSpiel() {
 
 // Wird einmal beim Laden der Seite aufgerufen (Abschnitt 10).
 function starteSpiel() {
-  erneuereBlaupausenSpeicher();
   const gespeichert = leseSpielstand();
   if (gespeichert) wendeSpielstandAn(gespeichert);
-  else starteNeuesSpiel();
+  else { erneuereBlaupausenSpeicher(); starteNeuesSpiel(); }
   if (!gespeichert || gespeichert.version >= 8) meldeKomponentenUmstellung(false);   // Phase 7c: nur alte Blaupausen umgestellt?
   // Phase 7c: Alte Blaupausen liegen jetzt im Kunststoffgehäuse – damit sie weiter gebaut werden können,
   // ist es bei alten Spielständen (und frisch umgestellten Blaupausen) gleich freigeschaltet.
@@ -12960,24 +13012,24 @@ function ladeWirtschaft(w) {
   spiel.entdeckteKlassen = w.entdeckteKlassen || [];
   spiel.autoKauf = w.autoKauf || {};
   spiel.autoVerkauf = w.autoVerkauf || {};
-  spiel.produktTeile = { ...(w.produktTeile || {}), ...spiel.produktTeile };
-  spiel.produktUeberhitzt = { ...(w.produktUeberhitzt || {}), ...spiel.produktUeberhitzt };
+  spiel.produktTeile = { ...spiel.produktTeile, ...(w.produktTeile || {}) };
+  spiel.produktUeberhitzt = { ...spiel.produktUeberhitzt, ...(w.produktUeberhitzt || {}) };
   // AP01: Gespeicherte Wärme ergänzen; vorhandene Blaupausen liefern weiterhin ihre aktuellen Werte.
   const waermeMap = (daten) => Object.fromEntries(Object.entries(daten && typeof daten === "object" ? daten : {})
     .filter(([, wert]) => typeof wert === "number" && Number.isFinite(wert) && wert >= 0));
-  spiel.produktHitze = { ...waermeMap(w.produktHitze), ...spiel.produktHitze };
-  spiel.produktMaxHitze = { ...waermeMap(w.produktMaxHitze), ...spiel.produktMaxHitze };
+  spiel.produktHitze = { ...spiel.produktHitze, ...waermeMap(w.produktHitze) };
+  spiel.produktMaxHitze = { ...spiel.produktMaxHitze, ...waermeMap(w.produktMaxHitze) };
   const waermeFehlt = Object.keys(spiel.produktTeile).filter((id) =>
     !Object.hasOwn(spiel.produktHitze, id) || !Object.hasOwn(spiel.produktMaxHitze, id));
   if (waermeFehlt.length) setTimeout(() => meldeEreignis("hinweis", {
     text: `Bei ${waermeFehlt.length} Produkt(en) fehlen Wärmedaten im älteren Spielstand und die Blaupause ist nicht mehr vorhanden. Die früheren Werte können nicht wiederhergestellt werden.`,
   }), 900);
-  spiel.produktQa = { ...(w.produktQa || {}), ...spiel.produktQa };                   // W2 (M7)
+  spiel.produktQa = { ...spiel.produktQa, ...(w.produktQa || {}) };                   // W2 (M7)
   for (const [pid, q] of Object.entries(spiel.produktQa)) {                            // W2b: alte boolesche Werte wandeln
     if (q === true) spiel.produktQa[pid] = { g: 1, m: 1 };
     else if (!q) delete spiel.produktQa[pid];
   }
-  spiel.produktGehaeuse = { ...(w.produktGehaeuse || {}), ...spiel.produktGehaeuse };   // Phase 7c
+  spiel.produktGehaeuse = { ...spiel.produktGehaeuse, ...(w.produktGehaeuse || {}) };   // Phase 7c
   spiel.krisen = w.krisen && typeof w.krisen === "object"                                // W3 (M2)
     ? { liste: Array.isArray(w.krisen.liste) ? w.krisen.liste : [], wartend: w.krisen.wartend || null, naechsteId: w.krisen.naechsteId || 1 }
     : spiel.krisen;
@@ -14783,7 +14835,7 @@ function aktualisiereAutomatik() {
 
 // Ein Schritt einer Automatik-Station: Material aus dem Eingangsfach → arbeiten → Ausgabefach
 function schrittStationAutomatik(s, dt) {
-  const r = rezeptVon(s);
+  const r = s.autoRezept || rezeptVon(s);
   if (!r || s.pausiert) return;
   if (!s.autoRezept) {
     if (r.ausgabe && summe(s.bestand) >= kapazitaetVon(s)) return;           // Ausgabefach voll
@@ -18154,7 +18206,7 @@ function setzeWerkzeug(werkzeug) {
   bau.werkzeug = werkzeug;
   if (werkzeug) verknuepfModus = null;
   ob.bauAbriss.setAttribute("aria-pressed", String(!!werkzeug && werkzeug.art === "abriss"));
-  ob.bauVerschieben.setAttribute("aria-pressed", String(!!werkzeug && werkzeug.art === "verschieben"));
+  ob.bauVerschieben.setAttribute("aria-pressed", String(!!werkzeug && ["verschieben", "bandVerschieben"].includes(werkzeug.art)));
   for (const karte of ob.bauInhalt.querySelectorAll("[data-typ]")) {
     karte.setAttribute("aria-pressed", String(!!werkzeug && werkzeug.art === "bauen" && werkzeug.typ === karte.dataset.typ));
   }
@@ -18170,6 +18222,11 @@ function waehleBauTyp(typ) {
 }
 function dreheWerkzeug() {
   const w = bau.werkzeug;
+  if (w && w.art === "bandVerschieben") {
+    const t = spiel.baender.get(w.id);
+    if (t && t.typ !== "band") { w.drehung = (w.drehung + 1) % 4; aktualisiereVorschau(); }
+    return;
+  }
   if (w && w.art === "einfuegen") {                // Phase 7a (Nachtrag 3): die ganze Kopie um 90° drehen
     w.drehung = (w.drehung + 1) % 4;
     aktualisiereVorschau();
@@ -18192,8 +18249,32 @@ function schalteAbriss() {
 }
 // Phase 5: Verschieben-Werkzeug (Taste M). Mit "id" wird dieses Gebäude sofort angehoben.
 function schalteVerschieben() {
+  if (!bau.werkzeug && auswahlBandId) { starteBandVerschieben(auswahlBandId); return; }
+  if (bau.werkzeug?.art === "bandVerschieben") { setzeWerkzeug(null); return; }
   if (!bau.offen) oeffneBau();
   setzeWerkzeug(bau.werkzeug && bau.werkzeug.art === "verschieben" ? null : { art: "verschieben", id: null, drehung: 0 });
+}
+function starteBandVerschieben(id) {
+  if (!spiel.baender.has(id)) return;
+  letzterBandKlick.id = null;
+  if (!bau.offen) oeffneBau();
+  setzeWerkzeug({ art: "bandVerschieben", id, drehung: 0 });
+}
+function dreheBandAuswahl() {
+  if (objektZug) {
+    const t = objektZug.art === "band" && spiel.baender.get(objektZug.id);
+    if (!t || t.typ === "band") return false;
+    objektZug.aktiv = true;
+    objektZug.drehung = (objektZug.drehung + 1) % 4;
+    objektZiehenBewegt(objektZug.zuletzt);
+    return true;
+  }
+  const t = !mehrfachAktiv() && auswahlBandId && spiel.baender.get(auswahlBandId);
+  if (!t || t.typ === "band") return false;
+  const r = verschiebeBandteil(t.id, t.x, t.z, 1);
+  if (!r.ok) zeigeMeldung("Drehen nicht möglich: " + r.gruende[0], true);
+  else { waehleBandteil(t.id); zeigeMeldung(r.anzahl > 1 ? "Verbundene Bandteile gedreht." : "Bandteil gedreht."); }
+  return true;
 }
 function starteVerschieben(id) {
   const g = spiel.gebaeude.get(id);
@@ -18406,10 +18487,15 @@ function aktualisiereBauTipp() {
     }
   } else if (w && w.art === "einfuegen") {           // Phase 7a (Nachtrag 3)
     ({ html, warnung = false } = einfuegeTipp());
+  } else if (w && w.art === "bandVerschieben") {
+    const t = spiel.baender.get(w.id);
+    html = bandVorschauGrund ? `Hier geht das nicht: ${htmlSicher(bandVorschauGrund)}`
+      : `Bandteil versetzen: neuen Platz anklicken${t?.typ !== "band" ? ` · ${kbd("drehen")} drehen` : ""} · <kbd>Esc</kbd> abbrechen · Inhalt und Einstellungen bleiben`;
+    warnung = !!bandVorschauGrund;
   } else if (w && w.art === "verschieben") {
     const g = w.id && spiel.gebaeude.get(w.id);
     if (!g) {
-      html = "Verschieben: Gebäude anklicken, das du versetzen möchtest · <kbd>Esc</kbd> abbrechen";
+      html = "Verschieben: Gebäude oder Bandteil anklicken, das du versetzen möchtest · <kbd>Esc</kbd> abbrechen";
     } else if (vorschauErgebnis && !vorschauErgebnis.passt) {
       html = `Hier geht das nicht: ${htmlSicher(vorschauErgebnis.gruende[0])}`;
       warnung = true;
@@ -18501,6 +18587,13 @@ function behandleKachelKlick(k, shift, strg = false) {
   }
   // 2. Bauen
   const w = bau.offen ? bau.werkzeug : null;
+  if (w && w.art === "bandVerschieben") {
+    const r = verschiebeBandteil(w.id, k.x, k.z, w.drehung);
+    if (!r.ok) { zeigeMeldung("Hier geht das nicht: " + r.gruende[0], true); return; }
+    setzeWerkzeug(null); waehleBandteil(w.id);
+    zeigeMeldung(r.anzahl > 1 ? "Verbundene Bandteile versetzt." : "Bandteil versetzt.");
+    return;
+  }
   if (w && w.art === "band") { bandKlick(w, k, shift); return; }   // Phase 6: ein Bandteil legen
   if (w && w.art === "einfuegen") { einfuegeKlick(w, k, shift); return; }   // Phase 7a (Nachtrag 3): Kopie aufstellen
   if (w && w.art === "bauen") {
@@ -18516,7 +18609,7 @@ function behandleKachelKlick(k, shift, strg = false) {
   // 2b. Verschieben (Phase 5): erst Gebäude anklicken, dann neuen Platz
   if (w && w.art === "verschieben") {
     if (!w.id) {
-      if (!g) { zeigeMeldung("Hier steht kein Gebäude.", true); return; }
+      if (!g) { const t = bandteilAufKachel(k); if (t) starteBandVerschieben(t.id); else zeigeMeldung("Hier steht kein verschiebbares Objekt.", true); return; }
       setzeWerkzeug({ art: "verschieben", id: g.id, drehung: g.drehung });
       return;
     }
@@ -18553,14 +18646,15 @@ function behandleKachelKlick(k, shift, strg = false) {
   // 4. Gebäude angeklickt: Info-Fenster
   if (g) { setzeAuswahl(null); waehleGebaeude(g.id); return; }
   // 4b. Bandteil angeklickt (Phase 7a): Einfachklick wählt das einzelne Stück,
-  //     ein zweiter Klick kurz danach (Doppelklick) die ganze Bandgruppe bis zum nächsten besonderen Teil
+  //     ein Doppelklick auf ein normales Fließband öffnet das Weiterbauen
   const bandteil = bandteilAufKachel(k);
   if (bandteil) {
     const jetzt = performance.now();
     const doppel = letzterBandKlick.id === bandteil.id && jetzt - letzterBandKlick.zeit < DOPPELKLICK_ZEIT;
     letzterBandKlick.id = doppel ? null : bandteil.id;
     letzterBandKlick.zeit = jetzt;
-    waehleBandteil(bandteil.id, doppel && !!segmentVon(bandteil));
+    waehleBandteil(bandteil.id);
+    if (doppel && bandteil.typ === "band") bandWeiterbauen();
     return;
   }
   // 5. Freie Kachel: auswählen (Phase 7a, Nachtrag 2: "Du" läuft selbst, ein Klick schickt niemanden hin)
@@ -18740,17 +18834,18 @@ function zeichneInfo() {
   if (t.art === "werkbank") {
     html += werkbankRezeptHtml(g);   // Phase 7c (UI): Suche + Kategorie, Gehäuse oben, nur freigeschaltete
   } else if (t.art === "montage") {
-    const liste = [...blaupausenNachId.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const liste = [...blaupausenNachId.values()].sort((a, b) => a.name.localeCompare(b.name) || (b.produktVersion || 1) - (a.produktVersion || 1));
     const fehlt = g.rezept && !blaupausenNachId.has(g.rezept);
-    html += `<label class="info-feld">Blaupause <select data-aktion="rezept">
+    html += `<label class="info-feld">Produktversion für nächste Durchgänge <select data-aktion="rezept">
         <option value="">– keine Blaupause –</option>
         ${fehlt ? `<option value="${htmlSicher(g.rezept)}" selected>⚠ gelöscht: ${htmlSicher(spiel.produktNamen[g.rezept] || "?")}</option>` : ""}
         ${liste.map((bp) => {
           const klasse = besteKlasse(teileZaehlen(bp.teile), !!(bp.werte && bp.werte.ueberhitzt));
           return `<option value="${htmlSicher(bp.id)}" ${g.rezept === bp.id ? "selected" : ""}>` +
-          `${bp.werte && bp.werte.ueberhitzt ? "⚠ " : ""}${htmlSicher(bp.name)} (${bp.teile.length} Teile${LAYOUT.vollbelegungPflicht && bp.werte && bp.werte.vollstaendig === false ? " · ⚠ unvollständig" : ""}${klasse ? ` · ${klasse.name}` : ""}${bp.werte && bp.werte.ueberhitzt ? `, ${Math.round(PRODUKTION.ausschussUeberhitzt * 100)} % Ausschuss` : ""})</option>`;
+          `${bp.werte && bp.werte.ueberhitzt ? "⚠ " : ""}${htmlSicher(produktVersionsName(bp))} (${bp.teile.length} Teile${LAYOUT.vollbelegungPflicht && bp.werte && bp.werte.vollstaendig === false ? " · ⚠ unvollständig" : ""}${klasse ? ` · ${klasse.name}` : ""}${bp.werte && bp.werte.ueberhitzt ? `, ${Math.round(PRODUKTION.ausschussUeberhitzt * 100)} % Ausschuss` : ""})</option>`;
         }).join("")}
       </select></label>
+      <p class="info-leer">Laufende Durchgänge behalten ihre Version. Eine neue Auswahl gilt danach.</p>
       ${liste.length ? "" : `<p class="info-leer">Noch keine Blaupause gespeichert – öffne den Layout-Designer (${kbd("designer")}).</p>`}`;
   } else if (t.art === "forschung") {
     // Phase 7d: Modus – Zeitprojekt (Forschungszeit) oder Zerlegen (Forschungspunkte)
@@ -20971,7 +21066,7 @@ window.addEventListener("keydown", (e) => {
       if (knopf) { erledigt(); knopf.click(); }
       break;
     }
-    case "drehen": if (bau.offen && bau.werkzeug) { erledigt(); dreheWerkzeug(); } break;
+    case "drehen": if (bau.offen && bau.werkzeug) { erledigt(); dreheWerkzeug(); } else if (dreheBandAuswahl()) erledigt(); break;
     case "abreissen": erledigt(); entfAbriss(); break;        // Phase 7a: Entf
     case "pause": erledigt(); schaltePauseUm(); break;
     case "tempo1": case "tempo2": case "tempo3": erledigt(); setzeTempo(Number(aktion.slice(-1))); break;
@@ -21270,6 +21365,14 @@ let bandVorschauGrund = "";
 function aktualisiereBandVorschau() {
   const w = bau.offen && !eingaben3dGesperrt ? bau.werkzeug : null;
   bandVorschauGrund = "";
+  if (w?.art === "bandVerschieben") {
+    const t = spiel.baender.get(w.id), k = hoverKachel;
+    if (!t || !k) { zeigeBandVorschau(null); return; }
+    const plan = pruefeBandVersatz(t, k.x, k.z, w.drehung);
+    bandVorschauGrund = plan.passt ? "" : plan.gruende[0];
+    zeigeBandVorschau(plan.teile.map((p) => ({ ...p, passt: plan.passt })));
+    return;
+  }
   if (!w || (w.art !== "band" && w.art !== "abriss")) { zeigeBandVorschau(null); return; }
   if (zug.start && zug.plan) {
     zeigeBandVorschau(zug.plan.liste);
@@ -21403,7 +21506,7 @@ function reisseBandAb(t) {
 
 /* --- Info-Fenster für Bandteile ---
    Phase 7a: Einfachklick = ein einzelnes Stück (drehen, abreißen, weiterbauen),
-             Doppelklick = die ganze Bandgruppe (Segment: Tempo, Name, Richtung umkehren, Gruppe abreißen). */
+             Doppelklick = Fließband weiterbauen. Gruppenwahl erfolgt über den gleichnamigen Knopf. */
 const letzterBandKlick = { id: null, zeit: 0 };
 function waehleBandteil(id, gruppe = false) {
   waehleGebaeude(null);
@@ -21636,7 +21739,8 @@ function zeichneBandInfo() {
     html += bandInfoKnopf("einzeln", "Nur dieses Stück");
     html += bandInfoKnopf("abreissenGruppe", `Gruppe abreißen (${seg.teile.length})`, "", "lz-knopf bau-gefahr");
   } else {
-    if (!typ.spur || t.typ === "band" || t.typ === "uebergang") html += bandInfoKnopf("drehen", "Drehen ↻");
+    html += bandInfoKnopf("verschieben", `Verschieben ${kbd("verschieben")}`);
+    html += bandInfoKnopf("drehen", t.typ === "band" ? "Drehen ↻" : `Drehen ${kbd("drehen")} ↻`);
     if (kannWeiterbauen(t)) html += bandInfoKnopf("weiterbauen", `Weiterbauen ${kbd("weiterbauen")}`);
     if (segAlle) html += bandInfoKnopf("gruppe", "Ganze Gruppe wählen");
     html += bandInfoKnopf("abreissen", t.bruecke ? "Brücke abreißen" : "Abreißen", "", "lz-knopf bau-gefahr");
@@ -21807,7 +21911,11 @@ ob.infoInhalt.addEventListener("click", (e) => {
       if (dreheSegmentUm(t.id)) zeigeMeldung(`${t.name} läuft jetzt andersherum.`);
       else zeigeMeldung("Dieses Segment lässt sich nicht umkehren.", true);
       break;
-    case "drehen": setzeBandEinstellung(t.id, "drehen"); break;
+    case "verschieben": starteBandVerschieben(t.id); break;
+    case "drehen":
+      if (t.typ === "band") setzeBandEinstellung(t.id, "drehen");
+      else dreheBandAuswahl();
+      break;
     case "overseerWeg": {                            // Phase 7d
       const p = mitarbeiter.find((m) => m.id === knopf.dataset.person);
       if (p && setzeOverseer(p.id, null).ok) zeigeMeldung(`${p.name} ist kein Overseer mehr.`);
@@ -23089,7 +23197,7 @@ function objektZiehenStart(e) {
   const g = gebaeudeUnter(k), t = !g && bandteilAufKachel(k);
   if (!g && !t) return false;
   objektZug = { art: g ? "gebaeude" : "band", id: (g || t).id, start: k,
-    pixelX: e.clientX, pixelY: e.clientY, pointerId: e.pointerId, aktiv: false, plan: null };
+    pixelX: e.clientX, pixelY: e.clientY, pointerId: e.pointerId, aktiv: false, drehung: 0, plan: null, zuletzt: e };
   return true;
 }
 // Brücken und verbundene Untergrundportale werden immer zusammen verschoben.
@@ -23105,10 +23213,16 @@ function bandVersatzGruppe(t) {
   }
   return [t];
 }
-function pruefeBandVersatz(t, x, z) {
+function pruefeBandVersatz(t, x, z, drehung = 0) {
+  drehung = ((drehung % 4) + 4) % 4;
   const gruppe = bandVersatzGruppe(t), dx = x - t.x, dz = z - t.z;
-  const teile = gruppe.map((b) => ({ teil: b, typ: b.typ, x: b.x + dx, z: b.z + dz, richtung: b.richtung }));
-  if (!dx && !dz) return { passt: true, gruende: [], teile };
+  const teile = gruppe.map((b) => {
+    let a = b.x - t.x, c = b.z - t.z;
+    for (let i = 0; i < drehung; i++) [a, c] = [-c, a];
+    return { teil: b, typ: b.typ, x: x + a, z: z + c, richtung: (b.richtung + drehung) % 4 };
+  });
+  if (drehung && t.typ === "band") return { passt: false, gruende: ["Normale Fließbänder werden mit diesem Werkzeug nur verschoben."], teile };
+  if (!dx && !dz && !drehung) return { passt: true, gruende: [], teile };
   const ignorierteIds = gruppe.map((b) => b.id);
   const freigegeben = gruppe.filter((b) => !bandTyp(b).hoch).map((b) => ({ x: b.x, z: b.z }));
   const gesperrt = teile.filter((p) => !bandTyp(p.teil).hoch && !bandTyp(p.teil).begehbar).map((p) => ({ x: p.x, z: p.z }));
@@ -23131,14 +23245,31 @@ function pruefeBandVersatz(t, x, z) {
       }
     }
   }
+  // Auch fremde Eingänge dürfen durch einen versetzten Ausgang ihren Partner nicht verlieren.
+  const geplant = new Map(teile.map((p) => [p.teil.id, p]));
+  const portalNachher = [...spiel.baender.values()].filter((b) => ["untergrundEin", "untergrundAus"].includes(b.typ))
+    .map((b) => ({ ...b, ...(geplant.get(b.id) || {}) }));
+  for (const ein of [...spiel.baender.values()].filter((b) => b.typ === "untergrundEin")) {
+    const vorher = untergrundPartner(ein);
+    const neu = portalNachher.find((b) => b.id === ein.id), r = RICHTUNGEN[neu.richtung];
+    let nachher = null;
+    for (let d = 1; d <= BAENDER.untergrundReichweite + 1; d++) {
+      const treffer = portalNachher.find((b) => b.id !== ein.id && b.x === neu.x + r.x * d && b.z === neu.z + r.z * d && b.richtung === neu.richtung);
+      if (treffer) { if (treffer.typ === "untergrundAus") nachher = treffer; break; }
+    }
+    if ((vorher && vorher.id !== nachher?.id) || (!geplant.has(ein.id) && nachher && vorher?.id !== nachher.id)) {
+      gruende.push("Hier würde eine bestehende Untergrundverbindung verändert. Bitte einen freien Platz wählen.");
+    }
+  }
   return { passt: !gruende.length, gruende: [...new Set(gruende)], teile };
 }
-function verschiebeBandteil(id, x, z) {
+function verschiebeBandteil(id, x, z, drehung = 0) {
   const t = spiel.baender.get(id);
   if (!t) return { ok: false, gruende: ["Dieses Bandteil gibt es nicht mehr."] };
-  const r = pruefeBandVersatz(t, x, z);
+  drehung = ((drehung % 4) + 4) % 4;
+  const r = pruefeBandVersatz(t, x, z, drehung);
   if (!r.passt) return { ok: false, gruende: r.gruende };
-  if (t.x === x && t.z === z) return { ok: true, teil: t, anzahl: r.teile.length };
+  if (t.x === x && t.z === z && !drehung) return { ok: true, teil: t, anzahl: r.teile.length };
   // Erst vollständig prüfen, dann alle Quellen lösen und alle Ziele belegen.
   // Dieselben Datenobjekte bewahren IDs, Richtungen, Ware, Puffer und Einstellungen.
   const geaendert = new Map();
@@ -23151,7 +23282,11 @@ function verschiebeBandteil(id, x, z) {
   }
   for (const p of r.teile) {
     const b = p.teil, ziel = holeKachel(p.x, p.z);
-    Object.assign(b, { x: p.x, z: p.z });
+    Object.assign(b, { x: p.x, z: p.z, richtung: p.richtung });
+    // Einlaufwinkel drehen relativ mit der Ware; Positionen und Qualitätsdaten bleiben unberührt.
+    if (drehung) for (const ware of [...(b.items || []), ...(b.reserve || [])]) {
+      if (Number.isInteger(ware.von)) ware.von = (ware.von + drehung) % 4;
+    }
     if (bandTyp(b).hoch) ziel.hochband = b.id;
     else { ziel.band = b.id; ziel.begehbar = !!bandTyp(b).begehbar; ziel.kosten = bandTyp(b).laufKosten || 1; }
     merke(p.x, p.z);
@@ -23166,6 +23301,8 @@ function objektZiehenBewegt(e) {
   if (!z || e.pointerId !== z.pointerId) return false;
   if (!z.aktiv && Math.hypot(e.clientX - z.pixelX, e.clientY - z.pixelY) <= GRAFIK.klickToleranz) return true;
   z.aktiv = true;
+  z.zuletzt = e;
+  letzterBandKlick.id = null; // Ein Ziehen darf nicht als erster Klick eines Doppelklicks zählen.
   maus.rahmenMoeglich = false;
   const k = kachelUnterMaus(e.clientX, e.clientY);
   setzeHover(k);
@@ -23173,7 +23310,7 @@ function objektZiehenBewegt(e) {
   const objekt = z.art === "gebaeude" ? spiel.gebaeude.get(z.id) : spiel.baender.get(z.id);
   if (!objekt) { objektZiehenAbbruch(); return true; }
   const x = objekt.x + k.x - z.start.x, zz = objekt.z + k.z - z.start.z;
-  const r = z.art === "gebaeude" ? passtGebaeude(objekt.typ, x, zz, objekt.drehung, objekt.id) : pruefeBandVersatz(objekt, x, zz);
+  const r = z.art === "gebaeude" ? passtGebaeude(objekt.typ, x, zz, objekt.drehung, objekt.id) : pruefeBandVersatz(objekt, x, zz, z.drehung);
   z.plan = { x, z: zz, ...r };
   if (z.art === "gebaeude") zeigeBauVorschau({ typ: objekt.typ, drehung: objekt.drehung, geo: r.geo, passt: r.passt });
   else zeigeBandVorschau(r.teile.map((p) => ({ ...p, passt: r.passt })));
@@ -23189,7 +23326,7 @@ function objektZiehenEnde(e) {
   const g = z.art === "gebaeude" && spiel.gebaeude.get(z.id);
   const r = !plan || !plan.passt ? { ok: false, gruende: plan?.gruende || ["Bitte innerhalb der Halle loslassen."] }
     : g ? (g.x === plan.x && g.z === plan.z ? { ok: true } : verschiebeGebaeude(g.id, plan.x, plan.z, g.drehung))
-      : verschiebeBandteil(z.id, plan.x, plan.z);
+      : verschiebeBandteil(z.id, plan.x, plan.z, z.drehung);
   objektZiehenAbbruch();
   if (!r.ok) zeigeMeldung("Verschieben abgebrochen: " + r.gruende[0], true);
   else {
@@ -23202,6 +23339,7 @@ function objektZiehenEnde(e) {
 function objektZiehenAbbruch() {
   if (!objektZug) return;
   objektZug = null;
+  letzterBandKlick.id = null;
   zeigeBauVorschau(null); zeigeBandVorschau(null);
   zeichenflaeche.style.cursor = "";
   maus.linksUnten = false; maus.rahmenMoeglich = false;
@@ -23365,7 +23503,7 @@ window.tradeUp = {
   GIGAFACTORY, istMaschine, laeuftOhnePersonal, maschinenTempo, maschineKann, maschinenRezepte, maschinenLaufkosten,
   aktualisiereAutomatik, lagerNimmtWare, siloWareVon, setzeSiloWare, smartNachkaufBedarf, smartNachkaufSchritt,
   setzeSmartNachkauf, naechsteImportzone, hatPuffer, untergrundPartner, planeUntergrund, baueUntergrund,
-  arbeitsZugangBei, pruefeAlteZugaenge, bandVersatzGruppe, pruefeBandVersatz, verschiebeBandteil, breche3dGestenAb,
+  arbeitsZugangBei, pruefeAlteZugaenge, bandVersatzGruppe, pruefeBandVersatz, verschiebeBandteil, starteBandVerschieben, dreheBandAuswahl, breche3dGestenAb,
   taktFrei, segmentDurchsatz, tempoStufe, tempoFreigeschaltet, warnleuchtenAktiv, wareFalschGeroutet,
   ioGatesAktiv, ueberschussPreis,
   // Phase 7d: neue Forschung (drei Bäume, Zeitprojekte, Firmen-XP, Bauforschung, Sperren, Wirkungen)

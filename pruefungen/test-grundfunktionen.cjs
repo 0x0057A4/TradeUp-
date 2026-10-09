@@ -62,10 +62,10 @@ test('Alte Spielstände laden mit Hinweis auf unwiederbringlich fehlende Wärme'
   assert.equal(ctx.warnings.length,1);
   assert.match(ctx.warnings[0].text,/nicht wiederhergestellt/);
 });
-test('Vorhandene Blaupausenwerte behalten beim Laden Vorrang',()=>{
+test('Gespeicherte Produktversionswerte behalten beim Laden Vorrang',()=>{
   const ctx=loadContext({produktHitze:{bp:20},produktMaxHitze:{bp:30}});
   ctx.ladeWirtschaft({produktTeile:{bp:{}},produktHitze:{bp:1},produktMaxHitze:{bp:2}});
-  assert.equal(ctx.spiel.produktHitze.bp,20); assert.equal(ctx.spiel.produktMaxHitze.bp,30);
+  assert.equal(ctx.spiel.produktHitze.bp,1); assert.equal(ctx.spiel.produktMaxHitze.bp,2);
 });
 function exportContext(copied, inventory, reserved={}) {
   const ctx={spiel:{auftraege:[{menge:1,geliefert:0,bezahlt:100}],produktKopiert:copied,
