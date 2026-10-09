@@ -10,7 +10,7 @@ Ein Doppelklick auf ein normales Fließband startet den Weiterbau über das Flie
 
 ## Prüfung
 
-102 Arbeitspaket-1-Regressionen sowie 7 neue Arbeitspaket-2-Prüfungen bestanden. Zusätzlich wurden die vollständigen Inline-Skripte syntaktisch geprüft. Die neuen Prüfungen decken Versionsarchiv, unveränderliche Werte, stabile Designer-ID, laufende Produktionsaufträge, Doppelklick-Weiterbau, Rotationseinschränkung, Warenrichtung und Texteingabe-Isolation ab.
+102 Arbeitspaket-1-Regressionen sowie 7 neue Arbeitspaket-2-Prüfungen bestanden. Zusätzlich wurden die vollständigen Inline-Skripte lokal syntaktisch geprüft. Die neuen Prüfungen decken Versionsarchiv, unveränderliche Werte, stabile Designer-ID, laufende Produktionsaufträge, Doppelklick-Weiterbau, Rotationseinschränkung, Warenrichtung und Texteingabe-Isolation ab.
 
 Browserprüfung in einer getrennten lokalen Testumgebung: Zwei Versionen desselben Designs wurden gespeichert; die Anzeige zeigte V1 und V2. Nach Neuladen blieb V2 erhalten. Ein Splitter wurde platziert, die Infoansicht zeigte „Verschieben M“ und „Drehen R“, und die Rotation meldete „Bandteil gedreht.“ Es traten keine Browserwarnungen oder -fehler auf. Der Doppelklickpfad ist zusätzlich durch die neue Handlerprüfung abgesichert; ein vollständiger Browsernachweis mit einem normal gebauten Band bleibt für die nächste Abnahmerunde zu ergänzen.
 
@@ -24,7 +24,6 @@ node logik-regressionen.cjs index.html
 node grafik-tests.cjs index.html
 node test-lager-prioritaet.cjs index.html
 node test-band-reihenfolge.cjs index.html
-node --check ap2-syntax.mjs
 ```
 
 Die Übernahme in `main` erfolgt erst nach deiner Abnahme.
