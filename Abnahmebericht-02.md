@@ -24,7 +24,7 @@ node logik-regressionen.cjs index.html
 node grafik-tests.cjs index.html
 node test-lager-prioritaet.cjs index.html
 node test-band-reihenfolge.cjs index.html
-node --check merged-syntax.mjs
+node --check ap2-syntax.mjs
 ```
 
 Die Übernahme in `main` erfolgt erst nach deiner Abnahme.
