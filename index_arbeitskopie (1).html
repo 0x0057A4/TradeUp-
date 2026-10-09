@@ -3117,9 +3117,9 @@
 .lager-sort-griff:active { cursor: grabbing; }
 .lager-sort-knoepfe { display: inline-flex; gap: 2px; margin-right: 5px; }
 .lager-sort-knoepfe .mini-knopf { padding: 2px 5px; }
-.lager-ausgabe-tabelle tr.lager-sort-zieht { opacity: .45; }
-.lager-ausgabe-tabelle tr.lager-sort-davor > td { box-shadow: inset 0 3px #69d3b0; }
-.lager-ausgabe-tabelle tr.lager-sort-dahinter > td { box-shadow: inset 0 -3px #69d3b0; }
+.lager-ausgabe-tabelle tr.lager-sort-zieht, .band-inventar-tabelle tr.lager-sort-zieht { opacity: .45; }
+.lager-ausgabe-tabelle tr.lager-sort-davor > td, .band-inventar-tabelle tr.lager-sort-davor > td { box-shadow: inset 0 3px #69d3b0; }
+.lager-ausgabe-tabelle tr.lager-sort-dahinter > td, .band-inventar-tabelle tr.lager-sort-dahinter > td { box-shadow: inset 0 -3px #69d3b0; }
 .lager-sort-hinweis { line-height: 1.45; }
 </style>
 </head>
@@ -13575,6 +13575,65 @@ function bandInventar(t) {
   }
   return { bestand, anzahl: Object.values(bestand).reduce((a, n) => a + n, 0), kapazitaet: 25 };
 }
+// Erst bewusstes Sortieren aktiviert Warenpriorität; ältere Spielstände bleiben FIFO.
+function normalisiereBandInventarReihenfolge(ids) {
+  return [...new Set((Array.isArray(ids) ? ids : []).filter((id) => typeof id === "string" && id))];
+}
+function bandInventarItems(t) {
+  const vorhanden = Object.keys(bandInventar(t).bestand);
+  const rang = normalisiereBandInventarReihenfolge(t.inventarReihenfolge);
+  if (!rang.length) return vorhanden;
+  for (const item of vorhanden) if (!rang.includes(item)) rang.push(item);
+  t.inventarReihenfolge = rang;
+  return rang.filter((item) => vorhanden.includes(item));
+}
+// Waren + Kennzeichen wechseln gemeinsam die Slots; Geometrie und Durchsatz bleiben erhalten.
+function ordneBandInventar(t) {
+  if (!Array.isArray(t.inventarReihenfolge) || !t.inventarReihenfolge.length) return;
+  bandInventarItems(t);
+  const rang = new Map(t.inventarReihenfolge.map((id, i) => [id, i]));
+  const waren = [], slots = [];
+  const slot = (ware, schreiben) => { waren.push({ ...ware, ...warenFlags(ware) }); slots.push(schreiben); };
+  const setzeWare = (ziel, ware) => {
+    ziel.item = ware.item;
+    delete ziel.geprueft; delete ziel.defekt;
+    Object.assign(ziel, warenFlags(ware));
+  };
+  // Die Spur bleibt nach Position absteigend. Die erste Ware geht tatsächlich zuerst hinaus.
+  for (const it of t.items || []) slot(it, (w) => setzeWare(it, w));
+  const puffer = pufferVon(t);
+  if (puffer.length && !Array.isArray(t.pufferFlags)) t.pufferFlags = puffer.map(() => ({}));
+  for (let i = 0; i < puffer.length; i++) slot(pufferWare(t, i), (w) => { puffer[i] = w.item; t.pufferFlags[i] = warenFlags(w); });
+  const handIndex = waren.length;
+  if (t.haelt) slot({ item: t.haelt, ...warenFlags(t.haeltFlags) }, (w) => { t.haelt = w.item; t.haeltFlags = warenFlags(w); });
+  for (const w of t.reserve || []) slot(w, (ware) => setzeWare(w, ware));
+  const geordnet = waren.map((ware, index) => ({ ware, index })).sort((a, b) => (rang.get(a.ware.item) ?? Infinity) - (rang.get(b.ware.item) ?? Infinity) || a.index - b.index);
+  // Eine neu in die Hand priorisierte Ware durchläuft einen vollständigen Schwenkzyklus.
+  const neueHand = t.haelt && geordnet[handIndex]?.index !== handIndex;
+  geordnet.forEach(({ ware }, i) => slots[i](ware));
+  if (neueHand) { t.timer = 0; t.winkel = 0; t.wartet = 0; }
+}
+function verschiebeBandInventar(id, item, zielItem, dahinter = false) {
+  const t = spiel.baender.get(id);
+  if (!t || typeof item !== "string" || typeof zielItem !== "string" || item === zielItem) return false;
+  const sichtbar = bandInventarItems(t);
+  if (!sichtbar.includes(item) || !sichtbar.includes(zielItem)) return false;
+  const vorher = normalisiereBandInventarReihenfolge(t.inventarReihenfolge);
+  const alle = vorher.length ? [...vorher] : [...sichtbar];
+  alle.splice(alle.indexOf(item), 1);
+  alle.splice(alle.indexOf(zielItem) + (dahinter ? 1 : 0), 0, item);
+  if (alle.every((id, i) => id === (vorher.length ? vorher : sichtbar)[i])) return false;
+  t.inventarReihenfolge = alle;
+  ordneBandInventar(t);
+  spiel.version++;
+  meldeStruktur();
+  return true;
+}
+function verschiebeBandInventarSchritt(id, item, schritt) {
+  const t = spiel.baender.get(id); if (!t || (schritt !== -1 && schritt !== 1)) return false;
+  const ids = bandInventarItems(t), i = ids.indexOf(item), ziel = ids[i + schritt];
+  return !!ziel && verschiebeBandInventar(id, item, ziel, schritt === 1);
+}
 function loescheBandInventar(id, item, menge = 1) {
   const t = spiel.baender.get(id);
   if (!t || typeof item !== "string" || !Number.isInteger(menge) || menge < 1) return { ok: false, menge: 0, grund: "Ungültige Ware oder Menge." };
@@ -13670,6 +13729,7 @@ function hatPlatz(t, pos = 0) { return bandInventar(t).anzahl < 25 && hatPhysisc
 // Der Segmenttakt wurde beim Annehmen bereits verbraucht, hier gilt nur der Abstand.
 function entladeBandReserve(t) {
   if (!istSpur(t)) return;
+  ordneBandInventar(t);
   while ((t.reserve || []).length) {
     const ware = t.reserve[0], pos = ware.pos === 0.5 ? 0.5 : 0;
     if (!hatPhysischPlatz(t, pos)) break;
@@ -13797,6 +13857,7 @@ function nimmAufBand(ziel, item, richtung, quelle = null, ware = null, pos = 0) 
     if (ziel.armFilter && ziel.armFilter !== item) return false;
     if (!Array.isArray(ziel.reserve)) ziel.reserve = [];
     ziel.reserve.push({ item, ...warenFlags(ware) });
+    ordneBandInventar(ziel);
     return true;
   }
   const vonAussen = !quelle || !ziel.segment || quelle.segment !== ziel.segment;
@@ -13950,6 +14011,7 @@ function legeInPuffer(t, item, ware = null) {
   if (!Array.isArray(t.pufferFlags)) t.pufferFlags = puffer.map(() => ({}));
   puffer.push(item);
   t.pufferFlags.push(warenFlags(ware));
+  ordneBandInventar(t);
   return true;
 }
 // Ein Schritt eines Verteilers: Items aus dem Puffer auf die Ausgänge verteilen
@@ -14301,6 +14363,7 @@ function armLegeAb(a, item) {
 function greifarmSchritt(a, dt) {
   const zyklus = BAENDER.greifZyklus * forschungsWirkung("greifZeit");
   if (!Array.isArray(a.reserve)) a.reserve = [];
+  ordneBandInventar(a);
   if (a.haelt) {
     a.timer = Math.min(zyklus, (a.timer || 0) + dt);
     a.winkel = Math.PI * a.timer / zyklus;
@@ -14311,7 +14374,7 @@ function greifarmSchritt(a, dt) {
       a.reserveTimer = (a.reserveTimer || 0) + dt;
       if (a.reserveTimer >= zyklus && bandInventar(a).anzahl < 25) {
         const ware = armGreifeWare(a);
-        if (ware) a.reserve.push(ware);
+        if (ware) { a.reserve.push(ware); ordneBandInventar(a); }
         a.reserveTimer = 0;
       }
     }
@@ -14427,11 +14490,13 @@ function setzeBandteil(typ, x, z, richtung, daten = {}) {
     haeltFlags: daten.haelt ? warenFlags(daten.haeltFlags) : null,
     reserve: (Array.isArray(daten.reserve) ? daten.reserve : []).filter((w) => w && typeof w.item === "string").map((w) => ({ item: w.item, pos: w.pos === 0.5 ? 0.5 : 0, von: w.von ?? richtung, ...warenFlags(w) })),
     ablaufFilter: Array.isArray(daten.ablaufFilter) ? [...daten.ablaufFilter] : [],
+    inventarReihenfolge: normalisiereBandInventarReihenfolge(daten.inventarReihenfolge),
     bruecke: daten.bruecke || null,
     ausDepot: !!daten.ausDepot,
     stau: 0, timer: 0, zurueck: 0, winkel: 0, naechster: 0, letzteSeite: daten.letzteSeite || null,
   };
   if (t.items) t.items.sort((a, b) => b.pos - a.pos);
+  ordneBandInventar(t);
   // Gespeicherte IDs: Zähler weiterschieben, damit keine doppelt vergeben wird
   const nummer = Number(String(t.id).slice(1));
   if (nummer >= spiel.naechsteBandId) spiel.naechsteBandId = nummer + 1;
@@ -14680,6 +14745,7 @@ function bandteilDaten(t) {
     id: t.id, typ: t.typ, x: t.x, z: t.z, richtung: t.richtung,
     items: t.items ? t.items.map((i) => ({ item: i.item, pos: Math.round(i.pos * 1000) / 1000, von: i.von, ...warenFlags(i) })) : undefined,
     tempo: t.tempo, name: t.name, seiten: t.seiten, vorrang: t.vorrang,
+    inventarReihenfolge: normalisiereBandInventarReihenfolge(t.inventarReihenfolge),
     armFilter: t.armFilter, haelt: t.haelt, ablaufFilter: t.ablaufFilter, bruecke: t.bruecke, ausDepot: t.ausDepot,
     puffer: hatPuffer(t) ? [...pufferVon(t)] : undefined,   // Phase 7b Nachtrag (7d: auch Omni-Merger)
     pufferFlags: hatPuffer(t) ? pufferVon(t).map((item, i) => warenFlags(pufferWare(t, i))) : undefined,
@@ -18576,6 +18642,7 @@ function aufbauWiederherstellen() {
 
 /* --- Info-Fenster --- */
 function waehleGebaeude(id) {
+  beendeBandInventarZiehen();
   leereMehrfach();                                  // Phase 7a (Nachtrag 3)
   auswahlBandId = null;                             // Phase 6
   bandAuswahl.id = null;
@@ -21396,6 +21463,7 @@ function bandInfoKnopf(aktion, text, extra = "", klasse = "lz-knopf") {
 // Suchausnahmen bleiben je Bauteil und Seite erhalten; der Katalog wird erst bei Bedarf geöffnet.
 const bandFilterUi = new Map();
 const bandInventarUi = new Map();
+let bandInventarZiehen = null;
 function bandFilterZustand(t, seite) {
   const key = `${t.id}:${seite}`;
   if (!bandFilterUi.has(key)) bandFilterUi.set(key, { suche: "", offen: false, item: "" });
@@ -21475,16 +21543,18 @@ function bandInventarFokusWiederherstellen(merker) {
 }
 function bandInventarHtml(t) {
   const inv = typeof bandInventar === "function" ? bandInventar(t) : { bestand: {}, anzahl: 0, kapazitaet: 25 };
-  const zeilen = Object.entries(inv.bestand).filter(([, n]) => n > 0).map(([item, n]) => {
+  const ids = bandInventarItems(t);
+  const zeilen = ids.map((item, index) => {
+    const n = inv.bestand[item];
     const name = htmlSicher(itemInfo(item).name), id = htmlSicher(item), ui = bandInventarMengenZustand(t, item);
-    return `<tr id="band-inventar-zeile-${id}"><td>${name}</td><td><b>${n}</b></td>
+    return `<tr id="band-inventar-zeile-${id}" data-band-inventar-item="${id}"><td><span class="lager-sort-griff" draggable="true" data-band-sort-griff="${id}" title="${name}: Ausgabe-Reihenfolge ändern" aria-hidden="true">⠿</span><span class="lager-sort-knoepfe"><button type="button" class="mini-knopf" data-band-aktion="inventarHoch" data-item="${id}" aria-label="${name}: früher ausgeben" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" class="mini-knopf" data-band-aktion="inventarRunter" data-item="${id}" aria-label="${name}: später ausgeben" ${index === ids.length - 1 ? "disabled" : ""}>↓</button></span>${name}</td><td><b>${n}</b></td>
       <td><button type="button" class="mini-knopf" data-band-aktion="inventarEins" data-item="${id}" title="Eine Einheit endgültig löschen" aria-label="Eine Einheit ${name} löschen">X</button></td>
       <td><div class="band-inventar-betrag"><input type="text" inputmode="numeric" autocomplete="off" maxlength="16" value="${htmlSicher(ui.wert)}" data-band-inventar-menge data-band-inventar-id="${htmlSicher(t.id)}" data-item="${id}" aria-label="Anzahl ${name} löschen" aria-describedby="band-inventar-fehler-${id}" aria-invalid="${!!ui.fehler}" title="Positive ganze Anzahl, aktuell höchstens ${n}">
-        <button type="button" class="mini-knopf" data-band-aktion="inventarBetrag" data-item="${id}" aria-label="Eingegebene Anzahl ${name} löschen">[ENTER]</button></div>
+        <button type="button" class="mini-knopf" data-band-aktion="inventarBetrag" data-item="${id}" aria-label="Eingegebene Anzahl ${name} löschen" title="Menge bestätigen und löschen">X</button></div>
         <span class="band-inventar-fehler" id="band-inventar-fehler-${id}" role="status">${htmlSicher(ui.fehler)}</span></td>
       <td><button type="button" class="mini-knopf bau-gefahr" data-band-aktion="inventarAlle" data-item="${id}" title="Alle ${n} Einheiten nach Bestätigung löschen" aria-label="Alle ${n} Einheiten ${name} löschen">X</button></td></tr>`;
   }).join("");
-  return `<div class="info-block"><h3>Inventar dieses Bauteils: ${inv.anzahl} / ${inv.kapazitaet}</h3><table class="band-inventar-tabelle"><thead><tr><th scope="col">Produkt</th><th scope="col">Menge</th><th scope="col">1x Löschen</th><th scope="col">Betrag löschen</th><th scope="col">Alle Löschen</th></tr></thead><tbody>${zeilen || '<tr><td colspan="5" class="info-leer">Leer</td></tr>'}</tbody></table></div>`;
+  return `<div class="info-block"><h3>Inventar dieses Bauteils: ${inv.anzahl} / ${inv.kapazitaet}</h3><p class="modus-text">Am ⠿ ziehen oder ↑ / ↓ nutzen: Ausgabe von oben nach unten. Ausgänge und Filter gelten weiterhin.</p><table class="band-inventar-tabelle" data-band-inventar-sort="${htmlSicher(t.id)}"><thead><tr><th scope="col">Produkt</th><th scope="col">Menge</th><th scope="col">1x Löschen</th><th scope="col">Betrag löschen</th><th scope="col">Alle Löschen</th></tr></thead><tbody>${zeilen || '<tr><td colspan="5" class="info-leer">Leer</td></tr>'}</tbody></table></div>`;
 }
 function loescheBandInventarBetrag(t, item) {
   const ui = bandInventarMengenZustand(t, item), vorhanden = bandInventar(t).bestand[item] || 0;
@@ -21496,6 +21566,7 @@ function loescheBandInventarBetrag(t, item) {
   return !!r.ok;
 }
 function zeichneBandInfo() {
+  if (bandInventarZiehen && bandInventarZiehen.id === auswahlBandId) return;
   const inventarFokus = bandInventarFokusMerken();
   const t = spiel.baender.get(auswahlBandId);
   if (!t) { waehleGebaeude(null); return; }
@@ -21586,7 +21657,7 @@ function aktualisiereBandInfoZahlen() {
   if (performance.now() < infoKlickSperre) return;
   setzeHtml(ziel, bandInfoZahlenHtml(t));
   const inventar = $("band-inventar");
-  if (inventar) {
+  if (inventar && !bandInventarZiehen) {
     const fokus = bandInventarFokusMerken();
     morphe(inventar, bandInventarHtml(t));
     bandInventarFokusWiederherstellen(fokus);
@@ -21700,6 +21771,8 @@ ob.infoInhalt.addEventListener("click", (e) => {
     }
     case "ablauf": setzeBandEinstellung(knopf.dataset.teil, "ablaufFilter", knopf.dataset.item); break;
     case "seiteSperren": setzeBandEinstellung(t.id, "seiteSperren", knopf.dataset.seite); break;          // Phase 7a
+    case "inventarHoch": verschiebeBandInventarSchritt(t.id, knopf.dataset.item, -1); break;
+    case "inventarRunter": verschiebeBandInventarSchritt(t.id, knopf.dataset.item, 1); break;
     case "inventarBetrag": loescheBandInventarBetrag(t, knopf.dataset.item); break;
     case "inventarEins": {
       const r = loescheBandInventar(t.id, knopf.dataset.item, 1);
@@ -21773,6 +21846,39 @@ ob.infoInhalt.addEventListener("click", (e) => {
   infoKlickSperre = 0;
   if (spiel.baender.has(auswahlBandId)) { zeichneBandInfo(); bandRahmenNeu(); }   // Knöpfe sofort im neuen Zustand zeigen
 });
+// Nur ein echter Griff-Drag im aktuell gewählten Bauteil darf seine Ausgabe umordnen.
+function beendeBandInventarZiehen() {
+  bandInventarZiehen = null;
+  for (const tr of ob.infoInhalt.querySelectorAll("[data-band-inventar-item]")) tr.classList.remove("lager-sort-zieht", "lager-sort-davor", "lager-sort-dahinter");
+}
+ob.infoInhalt.addEventListener("dragstart", (e) => {
+  const griff = e.target.closest("[data-band-sort-griff]"), tabelle = griff?.closest("[data-band-inventar-sort]");
+  if (!griff || !tabelle) return;
+  const id = tabelle.dataset.bandInventarSort, t = spiel.baender.get(id);
+  if (id !== auswahlBandId || !t || !bandInventarItems(t).includes(griff.dataset.bandSortGriff)) { e.preventDefault(); return; }
+  bandInventarZiehen = { id, item: griff.dataset.bandSortGriff };
+  e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", bandInventarZiehen.item);
+  griff.closest("tr").classList.add("lager-sort-zieht");
+});
+ob.infoInhalt.addEventListener("dragover", (e) => {
+  const tr = e.target.closest("[data-band-inventar-item]"), tabelle = tr?.closest("[data-band-inventar-sort]");
+  if (!bandInventarZiehen || !tabelle || auswahlBandId !== bandInventarZiehen.id || tabelle.dataset.bandInventarSort !== bandInventarZiehen.id) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = "move";
+  for (const zeile of tabelle.querySelectorAll("tr")) zeile.classList.remove("lager-sort-davor", "lager-sort-dahinter");
+  const rect = tr.getBoundingClientRect();
+  tr.classList.add(e.clientY >= rect.top + rect.height / 2 ? "lager-sort-dahinter" : "lager-sort-davor");
+});
+ob.infoInhalt.addEventListener("drop", (e) => {
+  const tr = e.target.closest("[data-band-inventar-item]"), tabelle = tr?.closest("[data-band-inventar-sort]");
+  if (!bandInventarZiehen || !tabelle || auswahlBandId !== bandInventarZiehen.id || tabelle.dataset.bandInventarSort !== bandInventarZiehen.id) return;
+  e.preventDefault();
+  const ziehen = bandInventarZiehen, rect = tr.getBoundingClientRect();
+  const geaendert = verschiebeBandInventar(ziehen.id, ziehen.item, tr.dataset.bandInventarItem, e.clientY >= rect.top + rect.height / 2);
+  beendeBandInventarZiehen();
+  if (geaendert) { zeigeMeldung(`${itemInfo(ziehen.item).name}: Ausgabe-Reihenfolge geändert.`); zeichneBandInfo(); }
+});
+ob.infoInhalt.addEventListener("dragend", beendeBandInventarZiehen);
+ob.infoInhalt.addEventListener("keydown", (e) => { if (e.key === "Escape" && bandInventarZiehen) { e.preventDefault(); e.stopPropagation(); beendeBandInventarZiehen(); } });
 // Mengen pro Bauteil/Item bleiben beim Live-Refresh und beim erneuten Auswählen erhalten.
 ob.infoInhalt.addEventListener("input", (e) => {
   if (!e.target.matches("input[data-band-inventar-menge]")) return;
@@ -22798,7 +22904,7 @@ function kopiereAuswahl() {
       return {
         typ: t.typ, dx: t.x - ox, dz: t.z - oz, richtung: t.richtung,
         tempo: t.tempo, seiten: kopie(t.seiten || {}), vorrang: t.vorrang, armFilter: t.armFilter,
-        ablaufFilter: [...(t.ablaufFilter || [])], bruecke: t.bruecke ? bruecken.get(t.bruecke) : null,
+        ablaufFilter: [...(t.ablaufFilter || [])], inventarReihenfolge: normalisiereBandInventarReihenfolge(t.inventarReihenfolge), bruecke: t.bruecke ? bruecken.get(t.bruecke) : null,
       };
     }),
   };
@@ -23245,7 +23351,7 @@ window.tradeUp = {
   ZONEN, setzeBestellung, setzeExportModus, setzeExportWare, exportBedarf, exportModusVon, holeExportAb, inExportzone,
   zonenListe, stehtAnWand, zoneAktiv, wagenUnterwegs, baukosten, gebaeudeName, stelleZoneAuf,
   // Phase 7b Nachtrag (Logik): Verteiler-Puffer, Hauptlager-Regeln, Zugang überall, Exportzone an der Wand
-  PUFFER_GROESSE, pufferVon, bandInventar, bandQuellItems, loescheBandInventar, hlNimmtAn, hlGibtAb, hlAufnahme, keinLagerFuer, zugangGesperrt, istLagerTyp,
+  PUFFER_GROESSE, pufferVon, bandInventar, bandInventarItems, verschiebeBandInventar, verschiebeBandInventarSchritt, bandQuellItems, loescheBandInventar, hlNimmtAn, hlGibtAb, hlAufnahme, keinLagerFuer, zugangGesperrt, istLagerTyp,
   wandRichtung, setzeAnWand, hlEntnimm, hlEinlagern,
   // Phase 7c: Komponenten-Katalog, Gehäuse, Produktklassen nach Kategorien, Freischaltung
   KOMPONENTEN, KATEGORIEN, GEHAEUSE, ALTE_BAUTEILE, ROHSTOFFE, ITEMS, ENDPRODUKTE, pruefeDatenbank,
