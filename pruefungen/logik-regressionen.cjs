@@ -60,7 +60,7 @@ function world() {
     bucheInsLager(items) { ctx.bucheItems(ctx.spiel.depot.items,items); },
     bucheGeld() {}, summe(items) { return Object.values(items||{}).reduce((a,n)=>a+n,0); },
     gebaeudeListe() { return [...buildings.values()]; },
-    mitarbeiter: [], aktualisiereVerknuepft() {}, reisseAb() {}, haltePersonAn() {}
+    mitarbeiter: [], aktualisiereVerknuepft() {}, erneuereBlaupausenSpeicher() {}, reisseAb() {}, haltePersonAn() {}
   };
   ctx.spiel.depot={items:{},baender:{},gebaeude:{}};
   vm.createContext(ctx);
@@ -81,10 +81,10 @@ check('Syntax aller Inline-Skripte',()=>{
     else new vm.Script(m[2].replace(/^import .*;$/gm,''));
   }
 });
-check('Speicherformat 15 liest 14 und 15, aber keine unbekannte Folgeversion',()=>{
-  const c=world();c.PRODUKTION={spielstandVersion:15};c.window={localStorage:{getItem:()=>''}};
-  for(const version of [14,15,16]){c.window.localStorage.getItem=()=>JSON.stringify({version,gebaeude:[]});assert.equal(!!c.leseSpielstand(),version!==16);}
-  assert.match(source,/spielstandVersion:\s+15,/);
+check('Speicherformat 16 liest 14 bis 16, aber keine unbekannte Folgeversion',()=>{
+  const c=world();c.PRODUKTION={spielstandVersion:16};c.window={localStorage:{getItem:()=>''}};
+  for(const version of [14,15,16,17]){c.window.localStorage.getItem=()=>JSON.stringify({version,gebaeude:[]});assert.equal(!!c.leseSpielstand(),version!==17);}
+  assert.match(source,/spielstandVersion:\s+16,/);
 });
 check('Inventar zählt echte Ware in Spur, Puffer und Arm genau einmal',()=>{
   const c=world(),t=band(c,'b','splitter',{items:[{item:'eisen'}],puffer:['eisen','kupfer'],haelt:'kupfer'});
